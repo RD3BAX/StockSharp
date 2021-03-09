@@ -7,6 +7,7 @@
 	using Ecng.Common;
 
 	using StockSharp.Localization;
+	using StockSharp.Logging;
 	using StockSharp.Messages;
 
 	/// <summary>
@@ -16,10 +17,9 @@
 	{
 		private bool _connected;
 		private readonly SyncObject _syncObject = new SyncObject();
-		private readonly List<Message> _pendingMessages = new List<Message>();
-		private readonly PairSet<long, PortfolioMessage> _pfSubscriptions = new PairSet<long, PortfolioMessage>();
-		private readonly PairSet<long, MarketDataMessage> _mdSubscriptions = new PairSet<long, MarketDataMessage>();
-		private readonly PairSet<long, OrderRegisterMessage> _sentOrders = new PairSet<long, OrderRegisterMessage>();
+		private readonly List<Message> _suspendedIn = new List<Message>();
+		private readonly PairSet<long, ISubscriptionMessage> _pendingSubscriptions = new PairSet<long, ISubscriptionMessage>();
+		private readonly PairSet<long, OrderRegisterMessage> _pendingRegistration = new PairSet<long, OrderRegisterMessage>();
 
 		/// <summary>
 		/// Initializes a new instance of the <see cref="OfflineMessageAdapter"/>.
@@ -36,7 +36,7 @@
 		/// Max message queue count. The default value is 10000.
 		/// </summary>
 		/// <remarks>
-		/// Value setted to -1 corresponds to the size without limitations.
+		/// Value set to -1 corresponds to the size without limitations.
 		/// </remarks>
 		public int MaxMessageCount
 		{
@@ -44,28 +44,43 @@
 			set
 			{
 				if (value < -1)
-					throw new ArgumentOutOfRangeException();
+					throw new ArgumentOutOfRangeException(nameof(value), value, LocalizedStrings.Str1219);
 
 				_maxMessageCount = value;
 			}
 		}
 
-		/// <summary>
-		/// Send message.
-		/// </summary>
-		/// <param name="message">Message.</param>
-		public override void SendInMessage(Message message)
-		{
-			if (message.IsBack)
-			{
-				if (message.Adapter == this)
-				{
-					message.Adapter = null;
-					message.IsBack = false;
-				}
+		/// <inheritdoc />
+		protected override bool SendInBackFurther => false;
 
-				//base.SendInMessage(message);
-				//return;
+		/// <inheritdoc />
+		protected override bool OnSendInMessage(Message message)
+		{
+			void ProcessOrderReplaceMessage(OrderReplaceMessage replaceMsg)
+			{
+				if (!_pendingRegistration.TryGetAndRemove(replaceMsg.OriginalTransactionId, out var originOrderMsg))
+					_suspendedIn.Add(replaceMsg);
+				else
+				{
+					_suspendedIn.Remove(originOrderMsg);
+
+					RaiseNewOutMessage(new ExecutionMessage
+					{
+						ExecutionType = ExecutionTypes.Transaction,
+						HasOrderInfo = true,
+						OriginalTransactionId = replaceMsg.OriginalTransactionId,
+						ServerTime = DateTimeOffset.Now,
+						OrderState = OrderStates.Done,
+						OrderType = originOrderMsg.OrderType,
+					});
+
+					var orderMsg = new OrderRegisterMessage();
+
+					replaceMsg.CopyTo(orderMsg);
+
+					_pendingRegistration.Add(replaceMsg.TransactionId, orderMsg);
+					StoreMessage(orderMsg);
+				}
 			}
 
 			switch (message.Type)
@@ -76,9 +91,8 @@
 					{
 						_connected = false;
 
-						_pendingMessages.Clear();
-						_mdSubscriptions.Clear();
-						_pfSubscriptions.Clear();
+						_suspendedIn.Clear();
+						_pendingSubscriptions.Clear();
 					}
 
 					break;
@@ -92,7 +106,14 @@
 					lock (_syncObject)
 					{
 						if (!_connected)
-							return;
+						{
+							var timeMsg = (TimeMessage)message;
+
+							if (timeMsg.OfflineMode == MessageOfflineModes.Ignore)
+								break;
+
+							return true;
+						}
 					}
 
 					break;
@@ -105,10 +126,10 @@
 						{
 							var orderMsg = (OrderRegisterMessage)message.Clone();
 
-							_sentOrders.Add(orderMsg.TransactionId, orderMsg);
+							_pendingRegistration.Add(orderMsg.TransactionId, orderMsg);
 							StoreMessage(orderMsg);
 
-							return;
+							return true;
 						}
 					}
 
@@ -120,105 +141,146 @@
 					{
 						if (!_connected)
 						{
-							var orderMsg = (OrderCancelMessage)message.Clone();
+							var cancelMsg = (OrderCancelMessage)message.Clone();
 
-							var originOrderMsg = _sentOrders.TryGetAndRemove(orderMsg.OrderTransactionId);
-
-							if (originOrderMsg == null)
-								_pendingMessages.Add(orderMsg);
+							if (!_pendingRegistration.TryGetAndRemove(cancelMsg.OriginalTransactionId, out var originOrderMsg))
+								_suspendedIn.Add(cancelMsg);
 							else
 							{
-								_pendingMessages.Remove(originOrderMsg);
+								_suspendedIn.Remove(originOrderMsg);
 
 								RaiseNewOutMessage(new ExecutionMessage
 								{
 									ExecutionType = ExecutionTypes.Transaction,
 									HasOrderInfo = true,
-									OriginalTransactionId = orderMsg.TransactionId,
+									OriginalTransactionId = cancelMsg.TransactionId,
+									ServerTime = DateTimeOffset.Now,
 									OrderState = OrderStates.Done,
 									OrderType = originOrderMsg.OrderType,
 								});
 							}
 
-							return;
+							return true;
 						}
 					}
 
 					break;
 				}
-				case MessageTypes.Portfolio:
+				case MessageTypes.OrderReplace:
 				{
 					lock (_syncObject)
 					{
 						if (!_connected)
 						{
-							var pfMsg = (PortfolioMessage)message;
-							ProcessSubscriptionMessage(pfMsg, pfMsg.IsSubscribe, pfMsg.TransactionId, pfMsg.OriginalTransactionId, _pfSubscriptions);
-							return;
+							ProcessOrderReplaceMessage((OrderReplaceMessage)message.Clone());
+							return true;
 						}
 					}
 
 					break;
 				}
-				case MessageTypes.MarketData:
+				case MessageTypes.OrderPairReplace:
 				{
 					lock (_syncObject)
 					{
 						if (!_connected)
 						{
-							var mdMsg = (MarketDataMessage)message;
-							ProcessSubscriptionMessage(mdMsg, mdMsg.IsSubscribe, mdMsg.TransactionId, mdMsg.OriginalTransactionId, _mdSubscriptions);
-							return;
+							var pairMsg = (OrderPairReplaceMessage)message.Clone();
+
+							ProcessOrderReplaceMessage(pairMsg.Message1);
+							ProcessOrderReplaceMessage(pairMsg.Message2);
+							return true;
 						}
 					}
 
 					break;
+				}
+				case MessageTypes.ProcessSuspended:
+				{
+					Message[] msgs;
+
+					lock (_syncObject)
+					{
+						msgs = _suspendedIn.CopyAndClear();
+
+						foreach (var msg in msgs)
+						{
+							if (msg is ISubscriptionMessage subscrMsg)
+								_pendingSubscriptions.RemoveByValue(subscrMsg);
+							else if (msg is OrderRegisterMessage orderMsg)
+								_pendingRegistration.RemoveByValue(orderMsg);
+						}
+					}
+
+					foreach (var msg in msgs)
+						base.OnSendInMessage(msg);
+
+					return true;
 				}
 				default:
 				{
-					lock (_syncObject)
+					switch (message.OfflineMode)
 					{
-						if (!_connected)
+						case MessageOfflineModes.None:
+							lock (_syncObject)
+							{
+								if (!_connected)
+								{
+									if (message is ISubscriptionMessage subscrMsg)
+										ProcessSubscriptionMessage(subscrMsg);
+									else
+										StoreMessage(message.Clone());
+
+									return true;
+								}
+							}
+
+							break;
+						case MessageOfflineModes.Ignore:
+							break;
+						case MessageOfflineModes.Cancel:
 						{
-							StoreMessage(message.Clone());
-							return;
+							if (message is ISubscriptionMessage subscrMsg)
+								RaiseNewOutMessage(subscrMsg.CreateResult());
+
+							return true;
 						}
+						default:
+							throw new ArgumentOutOfRangeException(nameof(message), message.Type, LocalizedStrings.Str1219);
 					}
 
 					break;
 				}
 			}
 
-			base.SendInMessage(message);
+			return base.OnSendInMessage(message);
 		}
 
-		private void ProcessSubscriptionMessage<TMessage>(TMessage message, bool isSubscribe, long transactionId, long originalTransactionId, PairSet<long, TMessage> subscriptions)
-			where TMessage : Message
+		private void ProcessSubscriptionMessage(ISubscriptionMessage subscrMsg)
 		{
-			if (isSubscribe)
+			if (subscrMsg.IsSubscribe)
 			{
-				var clone = (TMessage)message.Clone();
+				var clone = subscrMsg.TypedClone();
 
-				if (transactionId != 0)
-					subscriptions.Add(transactionId, clone);
+				if (subscrMsg.TransactionId != 0)
+					_pendingSubscriptions.Add(subscrMsg.TransactionId, clone);
 
-				StoreMessage(clone);
+				StoreMessage((Message)clone);
 			}
 			else
 			{
-				if (originalTransactionId != 0)
+				if (subscrMsg.OriginalTransactionId != 0)
 				{
-					var originMsg = subscriptions.TryGetValue(originalTransactionId);
-
-					if (originMsg != null)
+					if (_pendingSubscriptions.TryGetAndRemove(subscrMsg.OriginalTransactionId, out var originMsg))
 					{
-						subscriptions.Remove(originalTransactionId);
-						_pendingMessages.Remove(originMsg);
+						_suspendedIn.Remove((Message)originMsg);
+
+						RaiseNewOutMessage(new SubscriptionResponseMessage { OriginalTransactionId = subscrMsg.TransactionId });
 						return;
 					}
 				}
 								
-				StoreMessage(message.Clone());
+				StoreMessage((Message)subscrMsg.Clone());
 			}
 		}
 
@@ -227,16 +289,15 @@
 			if (message == null)
 				throw new ArgumentNullException(nameof(message));
 
-			if (_maxMessageCount > 0 && _pendingMessages.Count == _maxMessageCount)
+			if (_maxMessageCount > 0 && _suspendedIn.Count == _maxMessageCount)
 				throw new InvalidOperationException(LocalizedStrings.MaxMessageCountExceed);
 
-			_pendingMessages.Add(message);
+			_suspendedIn.Add(message);
+
+			this.AddInfoLog("Message {0} stored in offline.", message);
 		}
 
-		/// <summary>
-		/// Process <see cref="MessageAdapterWrapper.InnerAdapter"/> output message.
-		/// </summary>
-		/// <param name="message">The message.</param>
+		/// <inheritdoc />
 		protected override void OnInnerAdapterNewOutMessage(Message message)
 		{
 			ConnectMessage connectMessage = null;
@@ -248,42 +309,45 @@
 					connectMessage = (ConnectMessage)message;
 					break;
 				}
+
+				case MessageTypes.Disconnect:
+				{
+					lock (_syncObject)
+						_connected = false;
+
+					break;
+				}
+
+				case ExtendedMessageTypes.ReconnectingStarted:
+				{
+					lock (_syncObject)
+						_connected = false;
+
+					return;
+				}
+
+				case ExtendedMessageTypes.ReconnectingFinished:
+				{
+					break;
+				}
 			}
 
-			base.OnInnerAdapterNewOutMessage(message);
+			ProcessSuspendedMessage processMsg = null;
 
-			Message[] msgs = null;
-
-			if (connectMessage != null && connectMessage.Error == null)
+			if ((connectMessage != null && connectMessage.Error == null) || message.Type == ExtendedMessageTypes.ReconnectingFinished)
 			{
 				lock (_syncObject)
 				{
 					_connected = true;
 
-					msgs = _pendingMessages.CopyAndClear();
-
-					foreach (var msg in msgs)
-					{
-						if (msg is MarketDataMessage mdMsg)
-							_mdSubscriptions.RemoveByValue(mdMsg);
-						else if (msg is PortfolioMessage pfMsg)
-							_pfSubscriptions.RemoveByValue(pfMsg);
-						else if (msg is OrderRegisterMessage orderMsg)
-							_sentOrders.RemoveByValue(orderMsg);
-					}
+					processMsg = new ProcessSuspendedMessage(this);
 				}
 			}
 
-			if (msgs != null)
-			{
-				foreach (var msg in msgs)
-				{
-					msg.IsBack = true;
-					msg.Adapter = this;
+			base.OnInnerAdapterNewOutMessage(message);
 
-					RaiseNewOutMessage(msg);
-				}
-			}
+			if (processMsg != null)
+				base.OnInnerAdapterNewOutMessage(processMsg);
 		}
 
 		/// <summary>
@@ -292,7 +356,7 @@
 		/// <returns>Copy.</returns>
 		public override IMessageChannel Clone()
 		{
-			return new OfflineMessageAdapter((IMessageAdapter)InnerAdapter.Clone());
+			return new OfflineMessageAdapter(InnerAdapter.TypedClone());
 		}
 	}
 }

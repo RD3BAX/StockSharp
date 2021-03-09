@@ -1,33 +1,33 @@
 namespace StockSharp.Algo.Storages.Binary.Snapshot
 {
 	using System;
-	using System.Collections.Generic;
 	using System.Linq;
 	using System.Runtime.InteropServices;
 
 	using Ecng.Common;
 	using Ecng.Interop;
+	using Ecng.Serialization;
 
 	using StockSharp.Messages;
 
 	/// <summary>
-	/// Implementation of <see cref="ISnapshotSerializer{TMessage}"/> in binary format for <see cref="QuoteChangeMessage"/>.
+	/// Implementation of <see cref="ISnapshotSerializer{TKey,TMessage}"/> in binary format for <see cref="QuoteChangeMessage"/>.
 	/// </summary>
-	public class QuotesBinarySnapshotSerializer : ISnapshotSerializer<QuoteChangeMessage>
+	public class QuotesBinarySnapshotSerializer : ISnapshotSerializer<SecurityId, QuoteChangeMessage>
 	{
-		private const int _snapshotSize = 1024 * 10; // 10kb
-
 		[StructLayout(LayoutKind.Sequential, Pack = 1)]
 		private struct QuotesSnapshotRow
 		{
-			public decimal Price;
-			public decimal Volume;
+			public BlittableDecimal Price;
+			public BlittableDecimal Volume;
+			public int OrdersCount;
+			public byte QuoteCondition;
 		}
 
-		[StructLayout(LayoutKind.Sequential, Pack = 1, Size = _snapshotSize, CharSet = CharSet.Unicode)]
+		[StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Unicode)]
 		private struct QuotesSnapshot
 		{
-			[MarshalAs(UnmanagedType.ByValTStr, SizeConst = 100)]
+			[MarshalAs(UnmanagedType.ByValTStr, SizeConst = Sizes.S100)]
 			public string SecurityId;
 
 			public long LastChangeServerTime;
@@ -35,16 +35,17 @@ namespace StockSharp.Algo.Storages.Binary.Snapshot
 
 			public int BidCount;
 			public int AskCount;
+
+			public long SeqNum;
+			public SnapshotDataType? BuildFrom;
 		}
 
-		private const int _rowsOffset = 224;
-
-		private int _maxDepth = 100;
+		private int? _maxDepth;
 
 		/// <summary>
-		/// The maximum depth of order book. The default value is 100.
+		/// The maximum depth of order book.
 		/// </summary>
-		public int MaxDepth
+		public int? MaxDepth
 		{
 			get => _maxDepth;
 			set
@@ -56,13 +57,11 @@ namespace StockSharp.Algo.Storages.Binary.Snapshot
 			}
 		}
 
-		Version ISnapshotSerializer<QuoteChangeMessage>.Version { get; } = new Version(1, 0);
+		Version ISnapshotSerializer<SecurityId, QuoteChangeMessage>.Version { get; } = SnapshotVersions.V22;
 
-		int ISnapshotSerializer<QuoteChangeMessage>.GetSnapshotSize(Version version) => _snapshotSize;
+		string ISnapshotSerializer<SecurityId, QuoteChangeMessage>.Name => "OrderBook";
 
-		string ISnapshotSerializer<QuoteChangeMessage>.FileName => "orderbook_snapshot.bin";
-
-		void ISnapshotSerializer<QuoteChangeMessage>.Serialize(Version version, QuoteChangeMessage message, byte[] buffer)
+		byte[] ISnapshotSerializer<SecurityId, QuoteChangeMessage>.Serialize(Version version, QuoteChangeMessage message)
 		{
 			if (version == null)
 				throw new ArgumentNullException(nameof(version));
@@ -72,110 +71,118 @@ namespace StockSharp.Algo.Storages.Binary.Snapshot
 
 			var snapshot = new QuotesSnapshot
 			{
-				SecurityId = message.SecurityId.ToStringId(),
+				SecurityId = message.SecurityId.ToStringId().VerifySize(Sizes.S100),
 				
 				LastChangeServerTime = message.ServerTime.To<long>(),
 				LastChangeLocalTime = message.LocalTime.To<long>(),
+
+				BuildFrom = message.BuildFrom == null ? default(SnapshotDataType?) : (SnapshotDataType)message.BuildFrom,
+				SeqNum = message.SeqNum,
 			};
 
-			var bids = message.Bids.Take(MaxDepth).ToArray();
-			var asks = message.Asks.Take(MaxDepth).ToArray();
+			var bids = message.Bids.ToArray();
+			var asks = message.Asks.ToArray();
+
+			if (MaxDepth != null)
+			{
+				bids = bids.Take(MaxDepth.Value).ToArray();
+				asks = asks.Take(MaxDepth.Value).ToArray();
+			}
 
 			snapshot.BidCount = bids.Length;
 			snapshot.AskCount = asks.Length;
 
-			var ptr = snapshot.StructToPtr();
-			Marshal.Copy(ptr, buffer, 0, _snapshotSize);
-			Marshal.FreeHGlobal(ptr);
+			var snapshotSize = typeof(QuotesSnapshot).SizeOf();
+			var rowSize = typeof(QuotesSnapshotRow).SizeOf();
 
-			var offset = _rowsOffset;
-			var rowSize = Marshal.SizeOf(typeof(QuotesSnapshotRow));
+			var buffer = new byte[snapshotSize + (bids.Length + asks.Length) * rowSize];
+
+			var ptr = snapshot.StructToPtr();
+			ptr.CopyTo(buffer, 0, snapshotSize);
+			ptr.FreeHGlobal();
+
+			var offset = snapshotSize;
 
 			foreach (var quote in bids.Concat(asks))
 			{
 				var row = new QuotesSnapshotRow
 				{
-					Price = quote.Price,
-					Volume = quote.Volume,
+					Price = (BlittableDecimal)quote.Price,
+					Volume = (BlittableDecimal)quote.Volume,
+					OrdersCount = quote.OrdersCount ?? 0,
+					QuoteCondition = (byte)quote.Condition,
 				};
 
-				var rowPtr = row.StructToPtr();
-				Marshal.Copy(rowPtr, buffer, offset, rowSize);
-				Marshal.FreeHGlobal(rowPtr);
+				var rowPtr = row.StructToPtr(rowSize);
+
+				rowPtr.CopyTo(buffer, offset, rowSize);
+				rowPtr.FreeHGlobal();
 
 				offset += rowSize;
 			}
+
+			return buffer;
 		}
 
-		QuoteChangeMessage ISnapshotSerializer<QuoteChangeMessage>.Deserialize(Version version, byte[] buffer)
+		QuoteChangeMessage ISnapshotSerializer<SecurityId, QuoteChangeMessage>.Deserialize(Version version, byte[] buffer)
 		{
 			if (version == null)
 				throw new ArgumentNullException(nameof(version));
 
-			// Pin the managed memory while, copy it out the data, then unpin it
-			using (var handle = new GCHandle<byte[]>(buffer, GCHandleType.Pinned))
+			using (var handle = new GCHandle<byte[]>(buffer))
 			{
-				var ptr = handle.Value.AddrOfPinnedObject();
+				var ptr = handle.CreatePointer();
 
-				var snapshot = (QuotesSnapshot)Marshal.PtrToStructure(ptr, typeof(QuotesSnapshot));
+				var snapshot = ptr.ToStruct<QuotesSnapshot>(true);
 
-				var bids = new List<QuoteChange>();
-				var asks = new List<QuoteChange>();
+				var bids = new QuoteChange[snapshot.BidCount];
+				var asks = new QuoteChange[snapshot.AskCount];
 
-				var quotesMsg = new QuoteChangeMessage
+				QuoteChange ReadQuote()
+				{
+					var row = ptr.ToStruct<QuotesSnapshotRow>(true);
+					return new QuoteChange(row.Price, row.Volume, row.OrdersCount.DefaultAsNull(), (QuoteConditions)row.QuoteCondition);
+				}
+
+				for (var i = 0; i < snapshot.BidCount; i++)
+					bids[i] = ReadQuote();
+
+				for (var i = 0; i < snapshot.AskCount; i++)
+					asks[i] = ReadQuote();
+
+				return new QuoteChangeMessage
 				{
 					SecurityId = snapshot.SecurityId.ToSecurityId(),
 					ServerTime = snapshot.LastChangeServerTime.To<DateTimeOffset>(),
 					LocalTime = snapshot.LastChangeLocalTime.To<DateTimeOffset>(),
 					Bids = bids,
 					Asks = asks,
-					IsSorted = true,
+					BuildFrom = snapshot.BuildFrom,
+					SeqNum = snapshot.SeqNum,
 				};
-
-				ptr += _rowsOffset;
-
-				var rowSize = Marshal.SizeOf(typeof(QuotesSnapshotRow));
-
-				for (var i = 0; i < snapshot.BidCount; i++)
-				{
-					var row = (QuotesSnapshotRow)Marshal.PtrToStructure(ptr, typeof(QuotesSnapshotRow));
-					bids.Add(new QuoteChange(Sides.Buy, row.Price, row.Volume));
-					ptr += rowSize;
-				}
-
-				for (var i = 0; i < snapshot.AskCount; i++)
-				{
-					var row = (QuotesSnapshotRow)Marshal.PtrToStructure(ptr, typeof(QuotesSnapshotRow));
-					asks.Add(new QuoteChange(Sides.Sell, row.Price, row.Volume));
-					ptr += rowSize;
-				}
-
-				return quotesMsg;
 			}
 		}
 
-		SecurityId ISnapshotSerializer<QuoteChangeMessage>.GetSecurityId(QuoteChangeMessage message)
+		SecurityId ISnapshotSerializer<SecurityId, QuoteChangeMessage>.GetKey(QuoteChangeMessage message)
 		{
 			return message.SecurityId;
 		}
 
-		void ISnapshotSerializer<QuoteChangeMessage>.Update(QuoteChangeMessage message, QuoteChangeMessage changes)
+		void ISnapshotSerializer<SecurityId, QuoteChangeMessage>.Update(QuoteChangeMessage message, QuoteChangeMessage changes)
 		{
-			if (!changes.IsSorted)
-			{
-				message.Bids = changes.Bids.OrderByDescending(q => q.Price).ToArray();
-				message.Asks = changes.Asks.OrderBy(q => q.Price).ToArray();
-			}
-			else
-			{
-				message.Bids = changes.Bids.ToArray();
-				message.Asks = changes.Asks.ToArray();
-			}
+			message.Bids = changes.Bids.ToArray();
+			message.Asks = changes.Asks.ToArray();
+
+			if (changes.BuildFrom != default)
+				message.BuildFrom = changes.BuildFrom;
+
+			if (changes.SeqNum != default)
+				message.SeqNum = changes.SeqNum;
 
 			message.LocalTime = changes.LocalTime;
 			message.ServerTime = changes.ServerTime;
 		}
 
-		DataType ISnapshotSerializer<QuoteChangeMessage>.DataType => DataType.MarketDepth;
+		DataType ISnapshotSerializer<SecurityId, QuoteChangeMessage>.DataType => DataType.MarketDepth;
 	}
 }

@@ -17,6 +17,7 @@ namespace StockSharp.BusinessEntities
 {
 	using System;
 	using System.Collections.Generic;
+	using System.ComponentModel.DataAnnotations;
 	using System.Runtime.Serialization;
 	using System.Xml.Serialization;
 
@@ -98,7 +99,7 @@ namespace StockSharp.BusinessEntities
 			set
 			{
 				_story = value;
-				NotifyChanged(nameof(Story));
+				NotifyChanged();
 			}
 		}
 
@@ -127,27 +128,60 @@ namespace StockSharp.BusinessEntities
 		[DisplayNameLoc(LocalizedStrings.Str221Key)]
 		[DescriptionLoc(LocalizedStrings.Str222Key)]
 		[MainCategory]
-		[Url]
-		public Uri Url { get; set; }
+		//[Url]
+		public string Url { get; set; }
+
+		/// <summary>
+		/// News priority.
+		/// </summary>
+		[DataMember]
+		[Display(
+			ResourceType = typeof(LocalizedStrings),
+			Name = LocalizedStrings.PriorityKey,
+			Description = LocalizedStrings.NewsPriorityKey,
+			GroupName = LocalizedStrings.GeneralKey)]
+		[Nullable]
+		public NewsPriorities? Priority { get; set; }
 
 		[field: NonSerialized]
 		private IDictionary<string, object> _extensionInfo;
 
-		/// <summary>
-		/// Extended information.
-		/// </summary>
-		/// <remarks>
-		/// Required when extra information is stored in the program.
-		/// </remarks>
+		/// <inheritdoc />
 		[Ignore]
 		[XmlIgnore]
 		[DisplayNameLoc(LocalizedStrings.ExtendedInfoKey)]
 		[DescriptionLoc(LocalizedStrings.Str427Key)]
 		[MainCategory]
+		[Obsolete]
 		public IDictionary<string, object> ExtensionInfo
 		{
 			get => _extensionInfo;
 			set => _extensionInfo = value;
+		}
+
+		/// <summary>
+		/// Language.
+		/// </summary>
+		[DataMember]
+		public string Language { get; set; }
+
+		/// <summary>
+		/// Expiration date.
+		/// </summary>
+		[DataMember]
+		public DateTimeOffset? ExpiryDate { get; set; }
+
+		/// <summary>
+		/// Sequence number.
+		/// </summary>
+		/// <remarks>Zero means no information.</remarks>
+		[DataMember]
+		public long SeqNum { get; set; }
+
+		/// <inheritdoc />
+		public override string ToString()
+		{
+			return $"{ServerTime} {Headline} {Story} {Source}";
 		}
 	}
 }

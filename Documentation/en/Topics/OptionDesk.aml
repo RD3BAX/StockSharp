@@ -9,7 +9,7 @@ offer and bid for Put and Call options.
       </para>
       <para>
 Below is the <legacyBold>OptionCalculator</legacyBold> example, which uses this component. The source code 
-of the example can be found in the <legacyBold>Samples/Options/OptionCalculator</legacyBold> folder.</para>
+of the example can be found in the <legacyItalic>Samples\Options\SampleOptionQuoting</legacyItalic> folder.</para>
       <mediaLink><image placement="left" xlink:href="option_desk" /></mediaLink>
     </introduction>
     
@@ -18,7 +18,7 @@ of the example can be found in the <legacyBold>Samples/Options/OptionCalculator<
     	<steps class="ordered">
 			<step>
 				<content>
-					<para>1.	In the XAML code, adding the <codeEntityReference>T:StockSharp.Xaml.OptionDesk</codeEntityReference>
+					<para>In the XAML code, adding the <codeEntityReference>T:StockSharp.Xaml.OptionDesk</codeEntityReference>
 element and assigning it the <legacyBold>Desk</legacyBold> name. </para>
             		<code title="XAML" language="XAML">
 	  				<![CDATA[

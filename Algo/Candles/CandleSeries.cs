@@ -16,10 +16,11 @@ Copyright 2010 by StockSharp, LLC
 namespace StockSharp.Algo.Candles
 {
 	using System;
+	using System.ComponentModel;
+	using System.ComponentModel.DataAnnotations;
 
 	using Ecng.Common;
 	using Ecng.ComponentModel;
-	using Ecng.Configuration;
 	using Ecng.Serialization;
 
 	using StockSharp.BusinessEntities;
@@ -46,22 +47,13 @@ namespace StockSharp.Algo.Candles
 		/// <param name="arg">The candle formation parameter. For example, for <see cref="TimeFrameCandle"/> this value is <see cref="TimeFrameCandle.TimeFrame"/>.</param>
 		public CandleSeries(Type candleType, Security security, object arg)
 		{
-			if (candleType == null)
-				throw new ArgumentNullException(nameof(candleType));
-
 			if (!candleType.IsCandle())
 				throw new ArgumentOutOfRangeException(nameof(candleType), candleType, LocalizedStrings.WrongCandleType);
 
-			if (security == null)
-				throw new ArgumentNullException(nameof(security));
-
-			if (arg == null)
-				throw new ArgumentNullException(nameof(arg));
-
-			_security = security;
-			_candleType = candleType;
-			_arg = arg;
-			WorkingTime = security.CheckExchangeBoard().WorkingTime;
+			_security = security ?? throw new ArgumentNullException(nameof(security));
+			_candleType = candleType ?? throw new ArgumentNullException(nameof(candleType));
+			_arg = arg ?? throw new ArgumentNullException(nameof(arg));
+			WorkingTime = security.Board?.WorkingTime;
 		}
 
 		private Security _security;
@@ -69,13 +61,19 @@ namespace StockSharp.Algo.Candles
 		/// <summary>
 		/// The instrument to be used for candles formation.
 		/// </summary>
+		[Display(
+			ResourceType = typeof(LocalizedStrings),
+			Name = LocalizedStrings.SecurityKey,
+			Description = LocalizedStrings.SecurityKey + LocalizedStrings.Dot,
+			GroupName = LocalizedStrings.GeneralKey,
+			Order = 0)]
 		public virtual Security Security
 		{
 			get => _security;
 			set
 			{
 				_security = value;
-				NotifyChanged(nameof(Security));
+				NotifyChanged();
 			}
 		}
 
@@ -84,14 +82,15 @@ namespace StockSharp.Algo.Candles
 		/// <summary>
 		/// The candle type.
 		/// </summary>
+		[Browsable(false)]
 		public virtual Type CandleType
 		{
 			get => _candleType;
 			set
 			{
-				NotifyChanging(nameof(CandleType));
+				NotifyChanging();
 				_candleType = value;
-				NotifyChanged(nameof(CandleType));
+				NotifyChanged();
 			}
 		}
 
@@ -100,61 +99,171 @@ namespace StockSharp.Algo.Candles
 		/// <summary>
 		/// The candle formation parameter. For example, for <see cref="TimeFrameCandle"/> this value is <see cref="TimeFrameCandle.TimeFrame"/>.
 		/// </summary>
+		[Browsable(false)]
 		public virtual object Arg
 		{
 			get => _arg;
 			set
 			{
-				NotifyChanging(nameof(Arg));
+				NotifyChanging();
 				_arg = value;
-				NotifyChanged(nameof(Arg));
+				NotifyChanged();
 			}
 		}
 
 		/// <summary>
 		/// The time boundary, within which candles for give series shall be translated.
 		/// </summary>
+		[Browsable(false)]
 		public WorkingTime WorkingTime { get; set; }
 
 		/// <summary>
 		/// To perform the calculation <see cref="Candle.PriceLevels"/>. By default, it is disabled.
 		/// </summary>
+		[Display(
+			ResourceType = typeof(LocalizedStrings),
+			Name = LocalizedStrings.VolumeProfileKey,
+			Description = LocalizedStrings.VolumeProfileCalcKey,
+			GroupName = LocalizedStrings.GeneralKey,
+			Order = 2)]
 		public bool IsCalcVolumeProfile { get; set; }
 
 		/// <summary>
 		/// The initial date from which you need to get data.
 		/// </summary>
 		[Nullable]
+		[Display(
+			ResourceType = typeof(LocalizedStrings),
+			Name = LocalizedStrings.Str343Key,
+			Description = LocalizedStrings.Str344Key,
+			GroupName = LocalizedStrings.GeneralKey,
+			Order = 3)]
 		public DateTimeOffset? From { get; set; }
 
 		/// <summary>
 		/// The final date by which you need to get data.
 		/// </summary>
 		[Nullable]
+		[Display(
+			ResourceType = typeof(LocalizedStrings),
+			Name = LocalizedStrings.Str345Key,
+			Description = LocalizedStrings.Str346Key,
+			GroupName = LocalizedStrings.GeneralKey,
+			Order = 4)]
 		public DateTimeOffset? To { get; set; }
 
 		/// <summary>
-		/// Build candles mode.
+		/// Allow build candles from smaller timeframe.
 		/// </summary>
-		public BuildCandlesModes BuildCandlesMode { get; set; }
+		/// <remarks>
+		/// Available only for <see cref="TimeFrameCandle"/>.
+		/// </remarks>
+		[Display(
+			ResourceType = typeof(LocalizedStrings),
+			Name = LocalizedStrings.SmallerTimeFrameKey,
+			Description = LocalizedStrings.SmallerTimeFrameDescKey,
+			GroupName = LocalizedStrings.GeneralKey,
+			Order = 5)]
+		public bool AllowBuildFromSmallerTimeFrame { get; set; } = true;
 
 		/// <summary>
-		/// Which market-data type is used as an candle source value.
+		/// Use only the regular trading hours for which data will be requested.
 		/// </summary>
-		public MarketDataTypes? BuildCandlesFrom { get; set; }
+		[Display(
+			ResourceType = typeof(LocalizedStrings),
+			Name = LocalizedStrings.RegularHoursKey,
+			Description = LocalizedStrings.RegularTradingHoursKey,
+			GroupName = LocalizedStrings.GeneralKey,
+			Order = 6)]
+		public bool IsRegularTradingHours { get; set; }
+
+		/// <summary>
+		/// Market-data count.
+		/// </summary>
+		[Display(
+			ResourceType = typeof(LocalizedStrings),
+			Name = LocalizedStrings.CountKey,
+			Description = LocalizedStrings.CandlesCountKey,
+			GroupName = LocalizedStrings.GeneralKey,
+			Order = 7)]
+		public long? Count { get; set; }
+
+		/// <summary>
+		/// Build mode.
+		/// </summary>
+		[Display(
+			ResourceType = typeof(LocalizedStrings),
+			Name = LocalizedStrings.ModeKey,
+			Description = LocalizedStrings.BuildModeKey,
+			GroupName = LocalizedStrings.BuildKey,
+			Order = 20)]
+		public MarketDataBuildModes BuildCandlesMode { get; set; }
+
+		/// <summary>
+		/// Which market-data type is used as a source value.
+		/// </summary>
+		//[Display(
+		//	ResourceType = typeof(LocalizedStrings),
+		//	Name = LocalizedStrings.Str213Key,
+		//	Description = LocalizedStrings.CandlesBuildSourceKey,
+		//	GroupName = LocalizedStrings.BuildKey,
+		//	Order = 21)]
+		[Browsable(false)]
+		[Obsolete("Use BuildCandlesFrom2 property.")]
+		public MarketDataTypes? BuildCandlesFrom
+		{
+			get => BuildCandlesFrom2?.ToMarketDataType();
+			set => BuildCandlesFrom2 = value?.ToDataType(null);
+		}
+
+		/// <summary>
+		/// Which market-data type is used as a source value.
+		/// </summary>
+		[Display(
+			ResourceType = typeof(LocalizedStrings),
+			Name = LocalizedStrings.Str213Key,
+			Description = LocalizedStrings.CandlesBuildSourceKey,
+			GroupName = LocalizedStrings.BuildKey,
+			Order = 21)]
+		public Messages.DataType BuildCandlesFrom2 { get; set; }
 
 		/// <summary>
 		/// Extra info for the <see cref="BuildCandlesFrom"/>.
 		/// </summary>
+		[Display(
+			ResourceType = typeof(LocalizedStrings),
+			Name = LocalizedStrings.Str748Key,
+			Description = LocalizedStrings.Level1FieldKey,
+			GroupName = LocalizedStrings.BuildKey,
+			Order = 22)]
 		public Level1Fields? BuildCandlesField { get; set; }
 
 		/// <summary>
-		/// Returns a string that represents the current object.
+		/// Request <see cref="CandleStates.Finished"/> only candles.
 		/// </summary>
-		/// <returns>A string that represents the current object.</returns>
+		[Display(
+			ResourceType = typeof(LocalizedStrings),
+			Name = LocalizedStrings.FinishedKey,
+			Description = LocalizedStrings.Str1073Key,
+			GroupName = LocalizedStrings.BuildKey,
+			Order = 23)]
+		public bool IsFinishedOnly { get; set; }
+
+		/// <summary>
+		/// Try fill gaps.
+		/// </summary>
+		[Display(
+			ResourceType = typeof(LocalizedStrings),
+			Name = LocalizedStrings.GapsKey,
+			Description = LocalizedStrings.FillGapsKey,
+			GroupName = LocalizedStrings.BuildKey,
+			Order = 24)]
+		public bool FillGaps { get; set; }
+
+		/// <inheritdoc />
 		public override string ToString()
 		{
-			return CandleType?.Name + "_" + Security + "_" + TraderHelper.CandleArgToFolderName(Arg);
+			return CandleType?.Name + "_" + Security + "_" + CandleType?.ToCandleMessageType().DataTypeArgToString(Arg);
 		}
 
 		/// <summary>
@@ -163,7 +272,7 @@ namespace StockSharp.Algo.Candles
 		/// <param name="storage">Settings storage.</param>
 		public void Load(SettingsStorage storage)
 		{
-			var secProvider = ConfigManager.TryGetService<ISecurityProvider>();
+			var secProvider = ServicesRegistry.TrySecurityProvider;
 			if (secProvider != null)
 			{
 				var securityId = storage.GetValue<string>(nameof(SecurityId));
@@ -181,8 +290,20 @@ namespace StockSharp.Algo.Candles
 			IsCalcVolumeProfile = storage.GetValue(nameof(IsCalcVolumeProfile), IsCalcVolumeProfile);
 
 			BuildCandlesMode = storage.GetValue(nameof(BuildCandlesMode), BuildCandlesMode);
-			BuildCandlesFrom = storage.GetValue(nameof(BuildCandlesFrom), BuildCandlesFrom);
+
+			if (storage.ContainsKey(nameof(BuildCandlesFrom2)))
+				BuildCandlesFrom2 = storage.GetValue<SettingsStorage>(nameof(BuildCandlesFrom2)).Load<Messages.DataType>();
+#pragma warning disable CS0618 // Type or member is obsolete
+			else if (storage.ContainsKey(nameof(BuildCandlesFrom)))
+				BuildCandlesFrom = storage.GetValue(nameof(BuildCandlesFrom), BuildCandlesFrom);
+#pragma warning restore CS0618 // Type or member is obsolete
+
 			BuildCandlesField = storage.GetValue(nameof(BuildCandlesField), BuildCandlesField);
+			AllowBuildFromSmallerTimeFrame = storage.GetValue(nameof(AllowBuildFromSmallerTimeFrame), AllowBuildFromSmallerTimeFrame);
+			IsRegularTradingHours = storage.GetValue(nameof(IsRegularTradingHours), IsRegularTradingHours);
+			Count = storage.GetValue(nameof(Count), Count);
+			IsFinishedOnly = storage.GetValue(nameof(IsFinishedOnly), IsFinishedOnly);
+			FillGaps = storage.GetValue(nameof(FillGaps), FillGaps);
 		}
 
 		/// <summary>
@@ -209,8 +330,16 @@ namespace StockSharp.Algo.Candles
 			storage.SetValue(nameof(IsCalcVolumeProfile), IsCalcVolumeProfile);
 
 			storage.SetValue(nameof(BuildCandlesMode), BuildCandlesMode);
-			storage.SetValue(nameof(BuildCandlesFrom), BuildCandlesFrom);
+
+			if (BuildCandlesFrom2 != null)
+				storage.SetValue(nameof(BuildCandlesFrom2), BuildCandlesFrom2.Save());
+
 			storage.SetValue(nameof(BuildCandlesField), BuildCandlesField);
+			storage.SetValue(nameof(AllowBuildFromSmallerTimeFrame), AllowBuildFromSmallerTimeFrame);
+			storage.SetValue(nameof(IsRegularTradingHours), IsRegularTradingHours);
+			storage.SetValue(nameof(Count), Count);
+			storage.SetValue(nameof(IsFinishedOnly), IsFinishedOnly);
+			storage.SetValue(nameof(FillGaps), FillGaps);
 		}
 	}
 }

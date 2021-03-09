@@ -1,105 +1,39 @@
 namespace StockSharp.Messages
 {
 	using System.Collections.Generic;
+	using System.Security;
 
-	using Ecng.Collections;
+	using Ecng.Common;
 
 	/// <summary>
-	/// The message adapter's provider interface. 
+	/// The message adapter's provider interface.
 	/// </summary>
 	public interface IMessageAdapterProvider
 	{
 		/// <summary>
-		/// All available adapters.
+		/// All currently available adapters.
 		/// </summary>
-		IEnumerable<IMessageAdapter> Adapters { get; }
-	}
-
-	/// <summary>
-	/// The message adapter's provider interface. 
-	/// </summary>
-	public interface IPortfolioMessageAdapterProvider : IMessageAdapterProvider
-	{
-		/// <summary>
-		/// All available adapters.
-		/// </summary>
-		IEnumerable<KeyValuePair<string, IMessageAdapter>> PortfolioAdapters { get; }
+		IEnumerable<IMessageAdapter> CurrentAdapters { get; }
 
 		/// <summary>
-		/// Get adapter by portfolio name.
+		/// All possible adapters.
 		/// </summary>
-		/// <param name="portfolioName">Portfolio name.</param>
-		/// <returns>The found adapter.</returns>
-		IMessageAdapter GetAdapter(string portfolioName);
+		IEnumerable<IMessageAdapter> PossibleAdapters { get; }
 
 		/// <summary>
-		/// Make association adapter and portfolio name.
+		/// Create adapter for client-server communication.
 		/// </summary>
-		/// <param name="portfolioName">Portfolio name.</param>
-		/// <param name="adapter">The adapter.</param>
-		void SetAdapter(string portfolioName, IMessageAdapter adapter);
+		/// <param name="transactionIdGenerator">Transaction id generator.</param>
+		/// <returns>Message adapter.</returns>
+		IMessageAdapter CreateTransportAdapter(IdGenerator transactionIdGenerator);
 
 		/// <summary>
-		/// Remove association between portfolio name and adapter.
+		/// Create adapters for StockSharp server connections.
 		/// </summary>
-		/// <param name="portfolioName">Portfolio name.</param>
-		/// <returns><see langword="true"/> if the association is successfully removed, otherwise, <see langword="false"/>.</returns>
-		bool RemoveAssociation(string portfolioName);
-	}
-
-	/// <summary>
-	/// In memory message adapter's provider.
-	/// </summary>
-	public class InMemoryMessageAdapterProvider : IPortfolioMessageAdapterProvider
-	{
-		/// <summary>
-		/// Initializes a new instance of the <see cref="InMemoryMessageAdapterProvider"/>.
-		/// </summary>
-		public InMemoryMessageAdapterProvider()
-		{
-		}
-
-		private readonly CachedSynchronizedDictionary<string, IMessageAdapter> _adapters = new CachedSynchronizedDictionary<string, IMessageAdapter>();
-
-		/// <inheritdoc />
-		public IEnumerable<IMessageAdapter> Adapters => _adapters.CachedValues;
-
-		/// <summary>
-		/// All available adapters.
-		/// </summary>
-		public virtual IEnumerable<KeyValuePair<string, IMessageAdapter>> PortfolioAdapters => _adapters.CachedPairs;
-
-		/// <summary>
-		/// Get adapter by portfolio name.
-		/// </summary>
-		/// <param name="portfolioName">Portfolio name.</param>
-		/// <returns>The found adapter.</returns>
-		public virtual IMessageAdapter GetAdapter(string portfolioName)
-		{
-			lock (_adapters.SyncRoot)
-				return _adapters.TryGetValue(portfolioName);
-		}
-
-		/// <summary>
-		/// Make association adapter and portfolio name.
-		/// </summary>
-		/// <param name="portfolioName">Portfolio name.</param>
-		/// <param name="adapter">The adapter.</param>
-		public virtual void SetAdapter(string portfolioName, IMessageAdapter adapter)
-		{
-			lock (_adapters.SyncRoot)
-				_adapters.TryAdd(portfolioName, adapter);
-		}
-
-		/// <summary>
-		/// Remove association between portfolio name and adapter.
-		/// </summary>
-		/// <param name="portfolioName">Portfolio name.</param>
-		/// <returns><see langword="true"/> if the association is successfully removed, otherwise, <see langword="false"/>.</returns>
-		public virtual bool RemoveAssociation(string portfolioName)
-		{
-			lock (_adapters.SyncRoot)
-				return _adapters.Remove(portfolioName);
-		}
+		/// <param name="transactionIdGenerator">Transaction id generator.</param>
+		/// <param name="login">Login.</param>
+		/// <param name="password">Password.</param>
+		/// <returns>Adapters for StockSharp server connections.</returns>
+		IEnumerable<IMessageAdapter> CreateStockSharpAdapters(IdGenerator transactionIdGenerator, string login, SecureString password);
 	}
 }

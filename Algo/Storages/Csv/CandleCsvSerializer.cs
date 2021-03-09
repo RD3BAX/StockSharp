@@ -50,11 +50,8 @@ namespace StockSharp.Algo.Storages.Csv
 			public CandleCsvMetaInfo(CandleCsvSerializer<TCandleMessage> serializer, DateTime date, Encoding encoding)
 				: base(date)
 			{
-				if (encoding == null)
-					throw new ArgumentNullException(nameof(encoding));
-
 				_serializer = serializer;
-				_encoding = encoding;
+				_encoding = encoding ?? throw new ArgumentNullException(nameof(encoding));
 			}
 
 			public override object LastId { get; set; }
@@ -129,10 +126,7 @@ namespace StockSharp.Algo.Storages.Csv
 		public CandleCsvSerializer(SecurityId securityId, object arg, Encoding encoding = null)
 			: base(securityId, encoding)
 		{
-			if (arg == null)
-				throw new ArgumentNullException(nameof(arg));
-
-			Arg = arg;
+			Arg = arg ?? throw new ArgumentNullException(nameof(arg));
 		}
 
 		/// <summary>
@@ -140,22 +134,13 @@ namespace StockSharp.Algo.Storages.Csv
 		/// </summary>
 		public object Arg { get; set; }
 
-		/// <summary>
-		/// To create empty meta-information.
-		/// </summary>
-		/// <param name="date">Date.</param>
-		/// <returns>Meta-information on data for one day.</returns>
+		/// <inheritdoc />
 		public override IMarketDataMetaInfo CreateMetaInfo(DateTime date)
 		{
 			return new CandleCsvMetaInfo(this, date, Encoding);
 		}
 
-		/// <summary>
-		/// Save data into stream.
-		/// </summary>
-		/// <param name="stream">Data stream.</param>
-		/// <param name="data">Data.</param>
-		/// <param name="metaInfo">Meta-information on data for one day.</param>
+		/// <inheritdoc />
 		public override void Serialize(Stream stream, IEnumerable<TCandleMessage> data, IMarketDataMetaInfo metaInfo)
 		{
 			var candleMetaInfo = (CandleCsvMetaInfo)metaInfo;
@@ -180,12 +165,7 @@ namespace StockSharp.Algo.Storages.Csv
 			});
 		}
 
-		/// <summary>
-		/// Write data to the specified writer.
-		/// </summary>
-		/// <param name="writer">CSV writer.</param>
-		/// <param name="data">Data.</param>
-		/// <param name="metaInfo">Meta-information on data for one day.</param>
+		/// <inheritdoc />
 		protected override void Write(CsvFileWriter writer, TCandleMessage data, IMarketDataMetaInfo metaInfo)
 		{
 			if (data.State == CandleStates.Active)
@@ -200,18 +180,16 @@ namespace StockSharp.Algo.Storages.Csv
 				data.LowPrice.ToString(),
 				data.ClosePrice.ToString(),
 				data.TotalVolume.ToString()
-			});
+			}.Concat(data.BuildFrom.ToCsv()).Concat(new[]
+			{
+				data.SeqNum.DefaultAsNull().ToString(),
+			}));
 		}
 
-		/// <summary>
-		/// Read data from the specified reader.
-		/// </summary>
-		/// <param name="reader">CSV reader.</param>
-		/// <param name="metaInfo">Meta-information on data for one day.</param>
-		/// <returns>Data.</returns>
+		/// <inheritdoc />
 		protected override TCandleMessage Read(FastCsvReader reader, IMarketDataMetaInfo metaInfo)
 		{
-			return new TCandleMessage
+			var message = new TCandleMessage
 			{
 				SecurityId = SecurityId,
 				Arg = Arg,
@@ -223,6 +201,14 @@ namespace StockSharp.Algo.Storages.Csv
 				TotalVolume = reader.ReadDecimal(),
 				State = CandleStates.Finished
 			};
+
+			if ((reader.ColumnCurr + 1) < reader.ColumnCount)
+				message.BuildFrom = reader.ReadBuildFrom();
+
+			if ((reader.ColumnCurr + 1) < reader.ColumnCount)
+				message.SeqNum = reader.ReadNullableLong() ?? 0L;
+
+			return message;
 		}
 	}
 }

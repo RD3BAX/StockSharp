@@ -30,7 +30,7 @@
 						  "virtual" transactions using the <legacyBold>MillisecondIncrementalIdGenerator</legacyBold> identifier generator.
 					  </para>
 					  <code language="C#"><![CDATA[
-					_connector = new RealTimeEmulationTrader<OpenECryMessageAdapter>(new OpenECryMessageAdapter(new MillisecondIncrementalIdGenerator())
+					_connector = new RealTimeEmulationTrader<SmartComMessageAdapter>(new SmartComMessageAdapter(new MillisecondIncrementalIdGenerator())
 					{
 						Login = Login.Text,
 						Password = Password.Password.To<SecureString>(),
@@ -42,21 +42,15 @@
 			  <step>
 				  <content>
 					  <para>
-						  The created connector is used as a usual connector. In our case, subscribing to events, creating <codeEntityReference>T:StockSharp.Algo.Candles.CandleManager</codeEntityReference>,
+						  The created connector is used as a usual connector. In our case, subscribing to events, 
 						  passing an information to the graphical components and establishing the connection.
 					  </para>
 					  <code language="C#"><![CDATA[
 SecurityPicker.SecurityProvider = new FilterableSecurityProvider(_connector);
 SecurityPicker.MarketDataProvider = _connector;
 
-_candleManager = new CandleManager(_connector);
-
 _logManager.Sources.Add(_connector);
-
-// clear password for security reason
-//Password.Clear();
-
-// subscribe on connection successfully event
+					
 _connector.Connected += () =>
 {
 	// update gui labels
@@ -91,11 +85,12 @@ _connector.NewMyTrade += TradeGrid.Trades.Add;
 // subscribe on error of order registration event
 _connector.OrderRegisterFailed += OrderGrid.AddRegistrationFail;
 
-_candleManager.Processing += (s, candle) =>
+_connector.CandleSeriesProcessing += (s, candle) =>
 {
 	if (candle.State == CandleStates.Finished)
 		_buffer.Add(candle);
 };
+_connector.SubscribeCandles(series, DateTime.Today.Subtract(TimeSpan.FromDays(5)), DateTime.Now);	
 
 _connector.MassOrderCancelFailed += (transId, error) =>
 	this.GuiAsync(() => MessageBox.Show(this, error.ToString(), LocalizedStrings.Str716));
@@ -170,12 +165,6 @@ _connector.MarketDataSubscriptionFailed += (security, msg, error) =>
       <codeEntityReference>T:MyNamespace.MyClass</codeEntityReference>
       <codeEntityReference>P:MyNamespace.MyClass.MyProp</codeEntityReference>
       <codeEntityReference>M:System.IO.File.OpenText(System.String)</codeEntityReference>
-
-      <externalLink>
-        <linkText>Sandcastle Styles</linkText>
-        <linkAlternateText>Sandcastle Styles on CodePlex</linkAlternateText>
-        <linkUri>http://www.codeplex.com/SandcastleStyles</linkUri>
-      </externalLink>
 
       <externalLink>
         <linkText>Change Log</linkText>

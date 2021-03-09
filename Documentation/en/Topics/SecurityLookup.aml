@@ -10,7 +10,9 @@
       </para>
       
       <para>
-      	To find the instrument you need to call the <codeEntityReference qualifyHint="true">M:StockSharp.BusinessEntities.IConnector.LookupSecurities(StockSharp.BusinessEntities.Security)</codeEntityReference> method.
+      	To find the instrument you need to call the 
+        <codeEntityReference qualifyHint="true">M:StockSharp.BusinessEntities.IConnector.LookupSecurities(StockSharp.BusinessEntities.Security,StockSharp.Messages.IMessageAdapter,StockSharp.Messages.MessageOfflineModes)</codeEntityReference> 
+        method.
       	The instrument passed to it used as a filter. The following search criteria (the exact number depends on the broker system) are available:
       </para>
 		<list class="bullet">
@@ -27,7 +29,7 @@
 			</listItem>
 		</list>
 		<para>
-			Found instruments will be returned through the <codeEntityReference qualifyHint="true">E:StockSharp.BusinessEntities.IConnector.NewSecurity</codeEntityReference> event.
+			Found instruments will be returned through the <codeEntityReference qualifyHint="true">E:StockSharp.Algo.Connector.NewSecurity</codeEntityReference> event.
 		</para>
     </introduction>
     <relatedTopics>

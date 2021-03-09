@@ -19,35 +19,65 @@ namespace StockSharp.Algo
 	using System.Threading;
 
 	using Ecng.Common;
+	using Ecng.ComponentModel;
 
 	using StockSharp.Localization;
 	using StockSharp.Logging;
 	using StockSharp.Messages;
-
-	class RestoredConnectMessage : ConnectMessage
-	{
-	}
 
 	/// <summary>
 	/// The messages adapter controlling the connection.
 	/// </summary>
 	public class HeartbeatMessageAdapter : MessageAdapterWrapper
 	{
+		private class RestoredConnectMessage : ConnectMessage
+		{
+		}
+
 		private class ReconnectMessage : Message
 		{
 			public ReconnectMessage()
 				: base(ExtendedMessageTypes.Reconnect)
 			{
 			}
+
+			public override Message Clone()
+			{
+				return new ReconnectMessage();
+			}
 		}
 
-		// дополнительные состояния для ConnectionStates
+		class ReconnectingFinishedMessage : Message
+		{
+			public ReconnectingFinishedMessage()
+				: base(ExtendedMessageTypes.ReconnectingFinished)
+			{
+			}
+
+			public override Message Clone()
+			{
+				return new ReconnectingFinishedMessage();
+			}
+		}
+
+		private class ReconnectingStartedMessage : Message
+		{
+			public ReconnectingStartedMessage()
+				: base(ExtendedMessageTypes.ReconnectingStarted)
+			{
+			}
+
+			public override Message Clone()
+			{
+				return new ReconnectingStartedMessage();
+			}
+		}
+
 		private const ConnectionStates _none = (ConnectionStates)(-1);
 		private const ConnectionStates _reConnecting = (ConnectionStates)10;
-		//private const ConnectionStates _reStartingExport = (ConnectionStates)11;
 
 		private readonly SyncObject _timeSync = new SyncObject();
-		private readonly TimeMessage _timeMessage = new TimeMessage();
+		private readonly TimeMessage _timeMessage = new TimeMessage { OfflineMode = MessageOfflineModes.Ignore };
 
 		private readonly ReConnectionSettings _reConnectionSettings;
 
@@ -59,6 +89,7 @@ namespace StockSharp.Algo
 		private Timer _timer;
 		private bool _canSendTime;
 		private bool _isFirstTimeConnect = true;
+		private bool _suppressDisconnectError;
 		
 		/// <summary>
 		/// Initializes a new instance of the <see cref="HeartbeatMessageAdapter"/>.
@@ -72,71 +103,96 @@ namespace StockSharp.Algo
 		}
 
 		/// <summary>
-		/// Process <see cref="MessageAdapterWrapper.InnerAdapter"/> output message.
+		/// Suppress reconnecting errors.
 		/// </summary>
-		/// <param name="message">The message.</param>
+		public bool SuppressReconnectingErrors { get; set; }
+
+		/// <inheritdoc />
 		protected override void OnInnerAdapterNewOutMessage(Message message)
 		{
 			switch (message.Type)
 			{
 				case MessageTypes.Connect:
 				{
+					var connectMsg = (ConnectMessage)message;
+					var isRestored = false;
 					var isReconnecting = false;
+					var isReconnectionStarted = false;
 
-					if (((ConnectMessage)message).Error == null)
+					if (connectMsg.Error == null)
 					{
-						isReconnecting = _prevState == _reConnecting;
-
-						lock (_timeSync)
-							_prevState = _currState = ConnectionStates.Connected;
-					}
-					else
-					{
-						_connectionTimeOut = _reConnectionSettings.Interval;
-						_connectingAttemptCount = _reConnectionSettings.ReAttemptCount;
+						isRestored = _currState == ConnectionStates.Connecting && (_prevState == ConnectionStates.Failed || _prevState == _reConnecting);
 
 						lock (_timeSync)
 						{
-							if (_reConnectionSettings.ReAttemptCount != 0)
+							_prevState = _currState = ConnectionStates.Connected;
+
+							_connectionTimeOut = _reConnectionSettings.Interval;
+							_connectingAttemptCount = _reConnectionSettings.ReAttemptCount;
+						}
+					}
+					else
+					{
+						lock (_timeSync)
+						{
+							if (_connectingAttemptCount != 0)
 							{
-								if (_currState == ConnectionStates.Connected)
-									_prevState = _reConnecting;
+								isReconnectionStarted = _prevState == ConnectionStates.Connected;
+
+								_prevState = _currState == ConnectionStates.Connected
+									? _reConnecting
+									: ConnectionStates.Failed;
 
 								_currState = _reConnecting;
+								isReconnecting = true;
 							}
 							else
 								_prevState = _currState = ConnectionStates.Failed;
 						}
 					}
 
-					if (isReconnecting)
+					if (isRestored)
 					{
-						RaiseNewOutMessage(new RestoredConnectMessage { Adapter = message.Adapter });
+						this.AddInfoLog(LocalizedStrings.Str2958);
+
+						if (SuppressReconnectingErrors)
+							RaiseNewOutMessage(new ReconnectingFinishedMessage { Adapter = message.Adapter });
+						else
+							RaiseNewOutMessage(new RestoredConnectMessage { Adapter = message.Adapter });
 					}
 					else
-						base.OnInnerAdapterNewOutMessage(message);
+					{
+						if (connectMsg.Error == null || !SuppressReconnectingErrors || !isReconnecting)
+							base.OnInnerAdapterNewOutMessage(message);
+						else if (isReconnectionStarted)
+						{
+							this.AddInfoLog(LocalizedStrings.Reconnecting);
+							base.OnInnerAdapterNewOutMessage(new ReconnectingStartedMessage { Adapter = message.Adapter });
+						}
+					}
 
 					break;
 				}
 				case MessageTypes.Disconnect:
 				{
-					if (((DisconnectMessage)message).Error == null)
+					var disconnectMsg = (DisconnectMessage)message;
+
+					if (disconnectMsg.Error == null)
 					{
 						lock (_timeSync)
 							_prevState = _currState = ConnectionStates.Disconnected;
 					}
 					else
 					{
-						//lock (_timeSync)
-						//{
-						//	if (_currState == ConnectionStates.Connected)
-						//		_prevState = _reConnecting;
-
-						//	_currState = _reConnecting;
-						//}
-
-						_connectionTimeOut = _reConnectionSettings.Interval;
-						_connectingAttemptCount = _reConnectionSettings.ReAttemptCount;
+						lock (_timeSync)
+						{
+							if (_suppressDisconnectError)
+							{
+								_suppressDisconnectError = false;
+								RaiseNewOutMessage(disconnectMsg.Error.ToErrorMessage());
+								disconnectMsg.Error = null;
+							}
+						}
 					}
 
 					base.OnInnerAdapterNewOutMessage(message);
@@ -149,12 +205,11 @@ namespace StockSharp.Algo
 			}
 		}
 
-		/// <summary>
-		/// Send message.
-		/// </summary>
-		/// <param name="message">Message.</param>
-		public override void SendInMessage(Message message)
+		/// <inheritdoc />
+		protected override bool OnSendInMessage(Message message)
 		{
+			var isStartTimer = false;
+
 			switch (message.Type)
 			{
 				case MessageTypes.Reset:
@@ -162,13 +217,16 @@ namespace StockSharp.Algo
 					_prevState = _none;
 
 					lock (_timeSync)
+					{
 						_currState = _none;
 
-					StopTimer();
+						StopTimer();
 
-					_connectingAttemptCount = 0;
-					_connectionTimeOut = default(TimeSpan);
-					_canSendTime = false;
+						_connectingAttemptCount = 0;
+						_connectionTimeOut = default;
+						_canSendTime = false;
+						_suppressDisconnectError = false;
+					}
 
 					break;
 				}
@@ -178,124 +236,158 @@ namespace StockSharp.Algo
 					if (_isFirstTimeConnect)
 						_isFirstTimeConnect = false;
 					else
-						base.SendInMessage(new ResetMessage());
+						base.OnSendInMessage(new ResetMessage());
 
 					lock (_timeSync)
+					{
 						_currState = ConnectionStates.Connecting;
 
-					if (_prevState == _none)
-					{
-						_connectionTimeOut = _reConnectionSettings.TimeOutInterval;
-						_connectingAttemptCount = _reConnectionSettings.AttemptCount;
-					}
-					else
-						_connectionTimeOut = _reConnectionSettings.Interval;
+						if (_prevState == _none)
+						{
+							_connectionTimeOut = _reConnectionSettings.TimeOutInterval;
+							_connectingAttemptCount = _reConnectionSettings.AttemptCount;
+						}
 
-					StartTimer();
+						isStartTimer = true;
+					}
 
 					break;
 				}
 				case MessageTypes.Disconnect:
 				{
 					lock (_timeSync)
+					{
+						_suppressDisconnectError = _timer != null;
+
 						_currState = ConnectionStates.Disconnecting;
+						_connectionTimeOut = _reConnectionSettings.TimeOutInterval;
 
-					_connectionTimeOut = _reConnectionSettings.TimeOutInterval;
-
-					StopTimer();
-
-					lock (_timeSync)
+						StopTimer();
 						_canSendTime = false;
+					}
+
+					break;
+				}
+
+				case MessageTypes.Time:
+				{
+					if (_timeMessage == message)
+					{
+						lock (_timeSync)
+						{
+							if (_currState == ConnectionStates.Disconnecting || _currState == ConnectionStates.Disconnected)
+								return true;
+						}
+					}
 
 					break;
 				}
 
 				case ExtendedMessageTypes.Reconnect:
 				{
-					SendInMessage(new ConnectMessage());
-					break;
+					return OnSendInMessage(new ConnectMessage());
 				}
 			}
 
-			base.SendInMessage(message);
+			try
+			{
+				var result = base.OnSendInMessage(message);
 
-			if (message != _timeMessage)
-				return;
+				lock (_timeSync)
+				{
+					if (isStartTimer && (_currState == ConnectionStates.Connecting || _currState == ConnectionStates.Connected))
+						StartTimer();
+				}
 
-			lock (_timeSync)
-				_canSendTime = true;
+				return result;
+			}
+			finally
+			{
+				if (message == _timeMessage)
+				{
+					lock (_timeSync)
+						_canSendTime = true;
+				}	
+			}
 		}
 
 		private void StartTimer()
 		{
-			lock (_timeSync)
+			if (_timer != null)
+				return;
+
+			var period = ReConnectionSettings.Interval;
+			var needHeartbeat = HeartbeatInterval != TimeSpan.Zero;
+			
+			var time = TimeHelper.Now;
+			var lastHeartBeatTime = TimeHelper.Now;
+
+			var sync = new SyncObject();
+			var isProcessing = false;
+
+			if (needHeartbeat)
 			{
-				if (_timer != null)
-					return;
-
-				var period = ReConnectionSettings.Interval;
-				var needHeartbeat = HeartbeatInterval != TimeSpan.Zero;
-				var time = TimeHelper.Now;
-				var lastHeartBeatTime = TimeHelper.Now;
-				var sync = new SyncObject();
-				var isProcessing = false;
-
-				if (needHeartbeat)
-				{
-					_canSendTime = true;
-					period = period.Min(HeartbeatInterval);
-				}
-
-				_timer = ThreadingHelper
-					.Timer(() =>
-					{
-						lock (sync)
-						{
-							if (isProcessing)
-								return;
-
-							isProcessing = true;
-						}
-
-						try
-						{
-							var now = TimeHelper.Now;
-							var diff = now - time;
-
-							if (needHeartbeat && now - lastHeartBeatTime >= HeartbeatInterval)
-							{
-								ProcessHeartbeat();
-								lastHeartBeatTime = now;
-							}
-
-							ProcessReconnection(diff);
-
-							time = now;
-						}
-						catch (Exception ex)
-						{
-							ex.LogError();
-						}
-						finally
-						{
-							lock (sync)
-								isProcessing = false;
-						}
-					})
-					.Interval(period);
+				_canSendTime = true;
+				period = period.Min(HeartbeatInterval);
 			}
+
+			var outMsgIntervalInitial = TimeSpan.FromSeconds(5);
+			var outMsgInterval = outMsgIntervalInitial;
+
+			_timer = ThreadingHelper
+			    .Timer(() =>
+			    {
+				    lock (sync)
+				    {
+					    if (isProcessing)
+						    return;
+
+					    isProcessing = true;
+				    }
+
+				    try
+				    {
+					    var now = TimeHelper.Now;
+					    var diff = now - time;
+
+					    if (needHeartbeat && now - lastHeartBeatTime >= HeartbeatInterval)
+					    {
+						    ProcessHeartbeat();
+						    lastHeartBeatTime = now;
+					    }
+
+					    ProcessReconnection(diff);
+
+						outMsgInterval -= diff;
+
+						if (outMsgInterval <= TimeSpan.Zero)
+						{
+							outMsgInterval = outMsgIntervalInitial;
+							RaiseNewOutMessage(new TimeMessage { LocalTime = CurrentTime });
+						}
+
+					    time = now;
+				    }
+				    catch (Exception ex)
+				    {
+					    ex.LogError();
+				    }
+				    finally
+				    {
+					    lock (sync)
+						    isProcessing = false;
+				    }
+			    })
+			    .Interval(period);
 		}
 
 		private void StopTimer()
 		{
-			lock (_timeSync)
-			{
-				if (_timer == null)
-					return;
+			if (_timer == null)
+				return;
 
-				_timer.Dispose();
-				_timer = null;
-			}
+			_timer.Dispose();
+			_timer = null;
 		}
 
 		private void ProcessReconnection(TimeSpan diff)
@@ -314,7 +406,8 @@ namespace StockSharp.Algo
 						switch (_currState)
 						{
 							case ConnectionStates.Connecting:
-								RaiseNewOutMessage(new ConnectMessage{ Error = new TimeoutException(LocalizedStrings.Str170) });
+								if (!SuppressReconnectingErrors || _connectingAttemptCount == 0)
+									RaiseNewOutMessage(new ConnectMessage { Error = new TimeoutException(LocalizedStrings.Str170) });
 								break;
 							case ConnectionStates.Disconnecting:
 								RaiseNewOutMessage(new DisconnectMessage { Error = new TimeoutException(LocalizedStrings.Str171) });
@@ -325,14 +418,11 @@ namespace StockSharp.Algo
 						{
 							this.AddInfoLog("RCM: Connecting AttemptError.");
 
-							//ReConnectionSettings.RaiseAttemptError(new TimeoutException(message));
 							lock (_timeSync)
 								_currState = _prevState;
 						}
 						else
 						{
-							//ReConnectionSettings.RaiseTimeOut();
-
 							if (_currState == ConnectionStates.Connecting && _connectingAttemptCount != 0)
 							{
 								lock (_timeSync)
@@ -354,7 +444,7 @@ namespace StockSharp.Algo
 				{
 					if (_connectingAttemptCount == 0)
 					{
-						this.AddWarningLog("RCM: Reconnecting attemts {0} PrevState {1}.", _connectingAttemptCount, FormatState(_prevState));
+						this.AddWarningLog("RCM: Reconnecting attempts {0} PrevState {1}.", _connectingAttemptCount, FormatState(_prevState));
 
 						lock (_timeSync)
 							_currState = _none;
@@ -367,7 +457,7 @@ namespace StockSharp.Algo
 					if (_connectionTimeOut > TimeSpan.Zero)
 						break;
 
-					if (IsTradeTime())
+					if (_reConnectionSettings.WorkingTime.IsTradeTime(TimeHelper.Now, out _, out _))
 					{
 						this.AddInfoLog("RCM: To Connecting. CurrState {0} PrevState {1} Attempts {2}.", FormatState(_currState), FormatState(_prevState), _connectingAttemptCount);
 
@@ -376,12 +466,7 @@ namespace StockSharp.Algo
 
 						_connectionTimeOut = _reConnectionSettings.Interval;
 
-						//_prevState = _currState;
-						RaiseNewOutMessage(new ReconnectMessage
-						{
-							IsBack = true,
-							Adapter = this
-						});
+						RaiseNewOutMessage(new ReconnectMessage().LoopBack(this));
 					}
 					else
 					{
@@ -399,13 +484,13 @@ namespace StockSharp.Algo
 			switch (state)
 			{
 				case _reConnecting:
-					return "Reconnecting";
+					return LocalizedStrings.Reconnecting;
 				
 				case _none:
-					return "None";
+					return LocalizedStrings.Str1658;
 
 				default:
-					return state.ToString();
+					return state.GetDisplayName();
 			}
 		}
 
@@ -413,7 +498,7 @@ namespace StockSharp.Algo
 		{
 			lock (_timeSync)
 			{
-				if (_currState != ConnectionStates.Connected)
+				if (_currState != ConnectionStates.Connected && !InnerAdapter.HeartbeatBeforConnect)
 					return;
 
 				if (!_canSendTime)
@@ -422,16 +507,10 @@ namespace StockSharp.Algo
 				_canSendTime = false;
 			}
 
-			_timeMessage.IsBack = true;
+			_timeMessage.LoopBack(this);
 			_timeMessage.TransactionId = TransactionIdGenerator.GetNextId();
 
 			RaiseNewOutMessage(_timeMessage);
-			//InnerAdapter.SendInMessage(_timeMessage);
-		}
-
-		private bool IsTradeTime()
-		{
-			return _reConnectionSettings.WorkingTime.IsTradeTime(TimeHelper.Now, out var _);
 		}
 
 		/// <summary>
@@ -440,7 +519,7 @@ namespace StockSharp.Algo
 		/// <returns>Copy.</returns>
 		public override IMessageChannel Clone()
 		{
-			return new HeartbeatMessageAdapter((IMessageAdapter)InnerAdapter.Clone());
+			return new HeartbeatMessageAdapter(InnerAdapter.TypedClone()) { SuppressReconnectingErrors = SuppressReconnectingErrors };
 		}
 	}
 }

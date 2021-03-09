@@ -15,9 +15,13 @@ Copyright 2010 by StockSharp, LLC
 #endregion S# License
 namespace StockSharp.Algo.Storages
 {
+	using System;
+	using System.Collections.Generic;
+
 	using Ecng.Serialization;
 
 	using StockSharp.BusinessEntities;
+	using StockSharp.Messages;
 
 	/// <summary>
 	/// The interface describing the trade objects storage.
@@ -50,6 +54,11 @@ namespace StockSharp.Algo.Storages
 		IStorageSecurityList Securities { get; }
 
 		/// <summary>
+		/// Position storage.
+		/// </summary>
+		IPositionStorage PositionStorage { get; }
+
+		/// <summary>
 		/// The list of portfolios.
 		/// </summary>
 		IStorageEntityList<Portfolio> Portfolios { get; }
@@ -59,34 +68,15 @@ namespace StockSharp.Algo.Storages
 		/// </summary>
 		IStoragePositionList Positions { get; }
 
-		///// <summary>
-		///// The list of own trades.
-		///// </summary>
-		//IStorageEntityList<MyTrade> MyTrades { get; }
-
-		///// <summary>
-		///// The list of tick trades.
-		///// </summary>
-		//IStorageEntityList<Trade> Trades { get; }
-
-		///// <summary>
-		///// The list of orders.
-		///// </summary>
-		//IStorageEntityList<Order> Orders { get; }
-
-		///// <summary>
-		///// The list of orders registration and cancelling errors.
-		///// </summary>
-		//IStorageEntityList<OrderFail> OrderFails { get; }
-
-		///// <summary>
-		///// The list of news.
-		///// </summary>
-		//IStorageEntityList<News> News { get; }
+		/// <summary>
+		/// The list of subscriptions.
+		/// </summary>
+		IStorageEntityList<MarketDataMessage> Subscriptions { get; }
 
 		/// <summary>
 		/// Initialize the storage.
 		/// </summary>
-		void Init();
+		/// <returns>Possible errors with storage names. Empty dictionary means initialization without any issues.</returns>
+		IDictionary<object, Exception> Init();
 	}
 }

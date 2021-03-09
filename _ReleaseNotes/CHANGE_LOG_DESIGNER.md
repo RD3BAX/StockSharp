@@ -1,5 +1,214 @@
 StockSharp Designer Change log
 ========================
+## v5.0.0:
+* (bug) Many bug fixes and improvements.
+* (feature) S# paper trading auto connection.
+* (feature) Finam, DukasCopy (history), Oanda (history), MFD supported.
+* (feature) Ability to download historical data.
+* (feature) Tradier source.
+* (feature) Bitmex. Testnet supported.
+* (feature) OpenECry. Certification passed.
+* (bug) Highest, Lowest, Vidya, Envelope, MACD indicators fix.
+* (feature) Sterling. Updated to 11.7 version.
+* (feature) Oanda. Level1 support removed.
+* (feature) QUIK DDE, QUIK Trans2Quik excluded.
+* (feature) CSV connector.
+* (feature) Security. MinVolume, Shortable, UnderlyingSecuityMinVolume and FaceValue properties added.
+* (feature) Deribit. V2 protocol supported.
+* (feature) BitStamp. V2 web sockets supported.
+* (feature) Plaza. Spectra 6.2.20 supported.
+* (feature) InteractiveBrokers. V9.76.01
+* (feature) Diagrams. ProtectPositionDiagramElement. More options added.
+* (feature) Diagrams. DiagramSocketType for OrderState added.
+* (feature) Diagrams. OrderBaseDiagramElement. Trigger for all order's diagram elements.
+* (feature) Diagrams. Font weight set to bold.
+* (bug) Diagram. Update composition item names in palette fixes.
+* (feature) Diagram. Bring link to front on mouse over.
+* (feature) Diagram. IndicatorDiagramElement. IsFinal and IsFormed params added.
+* (feature) Diagram. OrderRegisterDiagramElement. ZeroAsMarket param added.
+* (feature) Diagram. Converter show DateTimeOffset properties.
+* (feature) Diagram. Position, Strategy, StrategyTrades Strategy socket added.
+* (feature) Micex TEAP. Stock32, Stock33, Stock34, Currency32, Currency33, Currency34 interfaces added.
+* (feature) QUIK. 64 bit support.
+* (feature) QUIK. Candles BuildFrom mode supported.
+* (feature) QUIK. Terminal connection lost notification supported.
+* (feature) Upbit, CoinEx, FatBTC, LATOKEN connectors.
+
+## v4.4.16:
+* (feature) Alerts. Message made optional for sound based events.
+* (feature) Bithumb. Prime service supported.
+* (feature) OKEX. Support turn on/off sections.
+* (bug) IQFeed. Candles request fixes.
+* (feature) Process non persistable basket securities.
+* (bug) Storage adapter. Fix boards lookup and update.
+* (bug) Reconnection fix.
+* (feature) Digifinex, Idax, TradeOgre, CoinCap, Coinigy, LBank, BitMax, BW, Bibox, CoinBene, BitZ, ZB connectors.
+* (feature) News. Priority property added.
+* (feature) FIX connector. IBKR dialect supported algo orders.
+* (feature) OKEx. Web sockets v3 supported.
+* (feature) Plaza CGate. Spectra 6.2 supported.
+* (feature) TWIME. Spectra 6.2 supported.
+* (feature) Micex TEAP. Interface 31 supported.
+* (feature) Wait flushing data fix.
+* (bug) Statistics parameters. Fix reset state.
+* (bug) MarketDepth. Fix processing quote msgs with empty instrument info.
+* (bug) RSS fixes.
+* (feature) MarketDepth. Dynamic change price/volume text formats.
+* (feature) OpenECry. More order types supported.
+* (feature) OKEX. Position and account swap and margin supported.
+* (bug) Candles compression. Fix for non TF candles compression.
+* (bug) Basket adapter. Fix processing pending connect subscriptions.
+* (bug) Connector. Fix subscribers counter for error responses.
+* (feature) Basket adapter. Support offline mode for dedicated adapters.
+* (feature) Board editor redesign.
+* (bug) MessageAdapter. Fix ReConnectionSettings save/load.
+* (feature) PropertyGridEx. WorkingTime supported.
+* (feature) Order. Manual option added.
+* (bug) Heartbeat. Restore after reconnect.
+* (feature) Deribit. Extended orders.
+* (feature) More options for order registration.
+* (feature) AlphaVantage. Lookup instruments supported.
+* (bug) Quik. Fix hands while instruments lookup https://stocksharp.ru/forum/9238/zavisaet-quik-pri-podklyuchenii/
+* (bug) Fix security lookup.
+
+## v4.4.15:
+* (feature) LiveCoin. Candles support.
+* (feature) Position. SettlementPrice added.
+* (feature) OKEx. V3 protocol supported.
+* (feature) Bitmex. Stop orders extended.
+* (feature) OpenECry. v3.5.14.53
+* (bug) Bitmex. ExecInst fixes.
+* (bug) Candles. Fix duplicate candles subscription.
+* (bug) Market depth. Fix build depths from OL and L1.
+* (feature) MT4, MT5 connectors.
+* (bug) Remove live strategies fixes.
+* (bug) Remove area from chart fixes.
+* (bug) Remove items from solution tree fixes.
+* (feature) Saving and restoring order for items.
+* (bug) Clone source code element fixes.
+* (feature) Candle series settings added to diagram element.
+* (bug) Wrong element names fixes.
+* (feature) Add breaks to multiple elements.
+* (feature) Do not show breaks without settings.
+
+## v4.4.14:
+* (feature) Chart. Multi axes supported.
+* (bug) Finam downloading fix.
+* (feature) Status bar redesign.
+* (bug) Close live tab fix.
+* (bug) Index securities edit fix.
+* (feature) Volume continous securit.
+* (bug) Many bug fixes.
+
+## v4.4.12:
+* (bug) Fix storage format select.
+* (bug) Fix cross-thread UI issues.
+* (bug) Fix spashscreen info.
+* (bug) Charting. Buy/Sell annotation theme fix.
+* (feature) Orders panel. Conditional orders joined with regular orders.
+* (bug) SecurityGrid. Do not show errors in security grid.
+* (feature) Security lookup. Reset button to exchange board editor added.
+* (bug) InteractiveBrokers. Fix expiry time parsing fix.
+* (bug) InteractiveBrokers. Market depth fix.
+* (feature) Index builder. Ignore errors as parameters.
+* (feature) Save/load portfolio-connection mapping.
+* (bug) Fix conditional orders save.
+* (feature) Tooltip for pallete and solution tree added.
+* (bug) Fix download history enable/disable.
+* (bug) MarketDepthTruncateDiagramElement. Description fix.
+* (feature) Live. Show only one button (start or stop).
+
+## v4.4.11:
+* (bug) Many live trading fixes.
+* (feature) Offline. Support replace for pending orders.
+* (bug) InteractiveBrokers. End date for candles request fix https://stocksharp.ru/posts/m/43390/.
+* (bug) InteractiveBrokers. SecurityLookup error response handling fix.
+* (bug) InteractiveBrokers. Candles request fix.
+* (feature) Http -> Https.
+* (feature) Portfolio pickup option.
+* (bug) Binance, Coinbase, Bitfinex, Bitstamp, IQFeed fixes.
+* (feature) SmartCOM. V4 as default.
+* (bug) Transaq. Fix locked file issue.
+* (feature) Compress candles from smaller time-frames.
+* (bug) PnF candles store fixes.
+* (bug) Grids. Fix filters for enum based fields.
+* (bug) ConnectorWindow. Fix connector description for Quik lua.
+* (feature) FIX connector. IssueDate, IssueSize translation support.
+* (bug) FIX connector. SpectraFixDialect. Order mass cancel fix.
+* (bug) OrderGrid. Active filters fix.
+* (feature) MarketEmulator. CheckMoney option.
+* (feature) Plaza. v5.3.6
+* (feature) Micex. Stock30, Currency28, Currency30 interfaces.
+* (bug) Transaq. Fix shared dll initialization https://stocksharp.ru/forum/9421/podklyuchenie-sdata-k-tranzak-/
+* (bug) Fix Finam 1day candles downloading.
+* (feature) Index and continuous securities support.
+* (feature) Themes. Icons auto coloring.
+* (feature) CandleSeries.IsRegularTradingHours.
+* (bug) Logs. Designed fix.
+* (feature) FIX connector. SSL support.
+* (feature) FIX connector. QUIK FIX PreRrade and DukasCopy support.
+* (bug) MarketDataGrid. Fix further refreshes after error request.
+* (feature) Default theme changed.
+* (bug) Grids. Time zone column fix.
+* (bug) Chart icons color fixes.
+* (feature) MACD histogram. Draw signal and macd lines.
+* (feature) Snapshot data refactoring.
+* (bug) Quik. Fix portfolio receive fix.
+* (bug) Image publish cancellation processing fix.
+* (feature) QuikLua. Handle From To date range for market data requests. https://stocksharp.ru/forum/9460/korrektnoe-otobrazhenie-svechei/
+* (feature) StrategiesDashboard. Set security and portfolio directly. Allow trading and last error columns.
+* (bug) Charting. Fix Equity legend color.
+* (feature) Diagram. MarketDepthTruncateDiagramElement.
+* (bug) TimeSpanEditor. Fix DevExpress themes.
+* (feature) Default implementation of order log-> order book builder.
+* (feature) Bittrex. Web sockets supported.
+* (bug) Charting. Fix drawing trades with string id.
+* (feature) OrderGrid, ExecutionGrid, TradeGrid, MyTradeGrid. Sides coloring.
+* (feature) SecurityGrid. BuyBackDate, BuyBackPrice columns.
+* (bug) ConnectorWindow. Fix stub connectors check.
+* (feature) ExecutionGrid. OriginSide coloring.
+* (feature) Crypto connectors. BalanceCheckInterval for refresh an account balances in case of deposit and withdraw operation.
+* (feature) Huobi. Support HADAX.
+* (feature) FIX connector. Time format parsing settings as public.
+* (bug) Transaction snapshot. Fix trade data save.
+* (feature) Binary format by default.
+* (feature) Default theme is VS2017Dark.
+* (feature) OpenECry. v3.5.14.41
+* (feature) FAST dialects. Made network settings configurable.
+* (feature) InteractiveBrokers. v9.73.07
+* (feature) InteractiveBrokers. SSL support.
+* (bug) Fix securities lookup all processing.
+* (feature) CurrencyTypes. DEM, LUF.
+* (feature) ExchangeBoard. Globex board info added.
+* (bug) Candle building from smaller tf. Fix process multiples timeframes.
+
+## v4.4.6.1:
+* (bug) Option position chart. Legend binding fix.
+* (bug) Options charts theme binding fix.
+* (feature) Auto and manual select candles series for indicators.
+* (feature) Autoconfig turned off by default.
+* (bug) Connector window. Show missed column names.
+* (bug) File progress window. Closing fix.
+* (bug) Alerts loading fix.
+* (bug) StochasticOscillator draw fix.
+* (bug) InteractiveBrokers. Time zone fix.
+* (feature) Bitfinex, Okcoin. Track account subscriptions.
+* (bug) FIX connector. Fix process unknown outgoing messages.
+* (bug) Kraken. Signature calc fix.
+* (bug) InteractiveBrokers. Historical data fix.
+* (bug) Crypto. Market data loading in non EN culture fix.
+* (bug) Localization fixes.
+
+## v4.4.6:
+* (bug) Fix drag n drop from palette http://stocksharp.com/forum/9268/Drag-and-Drop-S-Designer-error/
+* (feature) Quik DDE turned off.
+* (bug) Yahoo restored.
+* (bug) IQFeed. Fix parse fundamental messages with empty exchange code.
+* (feature) Level1 fields. Dividends, AfterSplit, BeforeSplit.
+* (bug) Themes fix http://stocksharp.ru/forum/9257/v-gidre-i-v-dizainere-otsutstvuyut-biblioteki-devexpressxpfthemesvs2017/
+* (feature) FIX connector. Process unknown transactions option.
+* (feature) Embedded links of crypto connectors documentation.
+
 ## v4.4.5.4:
 * (feature) Crypto connectors Bitfinex, Coinbase, Kraken, Poloniex, GDAX, Bittrex, Bithumb, HitBTC, OKCoin, Coincheck updates.
 * (feature) Source-stubs for Binance, Liqui, CEX.IO, Cryptopia, OKEx, BitMEX, YoBit, Livecoin, EXMO, Deribit, Huobi, Kucoin, BITEXBOOK, CoinExchange.

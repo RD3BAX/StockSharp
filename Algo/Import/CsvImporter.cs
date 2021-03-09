@@ -6,7 +6,6 @@
 	using System.Linq;
 
 	using Ecng.Common;
-	using Ecng.Configuration;
 
 	using StockSharp.Algo.Storages;
 	using StockSharp.BusinessEntities;
@@ -19,7 +18,7 @@
 	/// </summary>
 	public class CsvImporter : CsvParser
 	{
-		private readonly IEntityRegistry _entityRegistry;
+		private readonly ISecurityStorage _securityStorage;
 		private readonly IExchangeInfoProvider _exchangeInfoProvider;
 		private readonly IMarketDataDrive _drive;
 		private readonly StorageFormats _storageFormat;
@@ -29,21 +28,15 @@
 		/// </summary>
 		/// <param name="dataType">Data type info.</param>
 		/// <param name="fields">Importing fields.</param>
-		/// <param name="entityRegistry">The storage of trade objects.</param>
+		/// <param name="securityStorage">Securities meta info storage.</param>
 		/// <param name="exchangeInfoProvider">Exchanges and trading boards provider.</param>
 		/// <param name="drive">The storage. If a value is <see langword="null" />, <see cref="IStorageRegistry.DefaultDrive"/> will be used.</param>
 		/// <param name="storageFormat">The format type. By default <see cref="StorageFormats.Binary"/> is passed.</param>
-		public CsvImporter(DataType dataType, IEnumerable<FieldMapping> fields, IEntityRegistry entityRegistry, IExchangeInfoProvider exchangeInfoProvider, IMarketDataDrive drive, StorageFormats storageFormat)
+		public CsvImporter(DataType dataType, IEnumerable<FieldMapping> fields, ISecurityStorage securityStorage, IExchangeInfoProvider exchangeInfoProvider, IMarketDataDrive drive, StorageFormats storageFormat)
 			: base(dataType, fields)
 		{
-			if (entityRegistry == null)
-				throw new ArgumentNullException(nameof(entityRegistry));
-
-			if (exchangeInfoProvider == null)
-				throw new ArgumentNullException(nameof(exchangeInfoProvider));
-
-			_entityRegistry = entityRegistry;
-			_exchangeInfoProvider = exchangeInfoProvider;
+			_securityStorage = securityStorage ?? throw new ArgumentNullException(nameof(securityStorage));
+			_exchangeInfoProvider = exchangeInfoProvider ?? throw new ArgumentNullException(nameof(exchangeInfoProvider));
 			_drive = drive;
 			_storageFormat = storageFormat;
 		}
@@ -54,14 +47,33 @@
 		public bool UpdateDuplicateSecurities { get; set; }
 
 		/// <summary>
+		/// Security updated event.
+		/// </summary>
+		public event Action<Security, bool> SecurityUpdated;
+
+		/// <summary>
 		/// Import from CSV file.
 		/// </summary>
 		/// <param name="fileName">File name.</param>
 		/// <param name="updateProgress">Progress notification.</param>
 		/// <param name="isCancelled">The processor, returning process interruption sign.</param>
-		public void Import(string fileName, Action<int> updateProgress, Func<bool> isCancelled)
+		/// <returns>Count and last time.</returns>
+		public (int, DateTimeOffset?) Import(string fileName, Action<int> updateProgress, Func<bool> isCancelled)
 		{
-			var buffer = new List<dynamic>();
+			var count = 0;
+			var lastTime = default(DateTimeOffset?);
+
+			var buffer = new List<Message>();
+
+			void Flush()
+			{
+				count += buffer.Count;
+
+				if (buffer.LastOrDefault() is IServerTimeMessage timeMsg)
+					lastTime = timeMsg.ServerTime;
+
+				FlushBuffer(buffer);
+			}
 
 			this.AddInfoLog(LocalizedStrings.Str2870Params.Put(fileName, DataType.MessageType.Name));
 
@@ -71,18 +83,22 @@
 				var prevPercent = 0;
 				var lineIndex = 0;
 
-				foreach (var instance in Parse(fileName, isCancelled))
+				foreach (var msg in Parse(fileName, isCancelled))
 				{
-					if (!(instance is SecurityMessage secMsg))
+					if (msg is SecurityMappingMessage)
+						continue;
+
+					if (!(msg is SecurityMessage secMsg))
 					{
-						buffer.Add(instance);
+						buffer.Add(msg);
 
 						if (buffer.Count > 1000)
-							FlushBuffer(buffer);
+							Flush();
 					}
 					else
 					{
-						var security = _entityRegistry.Securities.ReadBySecurityId(secMsg.SecurityId);
+						var security = _securityStorage.LookupById(secMsg.SecurityId);
+						var isNew = true;
 
 						if (security != null)
 						{
@@ -92,36 +108,17 @@
 								continue;
 							}
 
-							security.Type = secMsg.SecurityType ?? secMsg.SecurityId.SecurityType;
-							security.CfiCode = secMsg.CfiCode;
-							security.Strike = secMsg.Strike;
-							security.OptionType = secMsg.OptionType;
-							security.Name = secMsg.Name;
-							security.ShortName = secMsg.ShortName;
-							security.Class = secMsg.Class;
-							security.BinaryOptionType = secMsg.BinaryOptionType;
-							security.ExternalId = secMsg.SecurityId.ToExternalId();
-							security.ExpiryDate = secMsg.ExpiryDate;
-							security.SettlementDate = secMsg.SettlementDate;
-							security.UnderlyingSecurityId = secMsg.UnderlyingSecurityCode + "@" + secMsg.SecurityId.BoardCode;
-							security.Currency = secMsg.Currency;
-							security.PriceStep = secMsg.PriceStep;
-							security.Decimals = secMsg.Decimals;
-							security.VolumeStep = secMsg.VolumeStep;
-							security.Multiplier = secMsg.Multiplier;
-							security.IssueSize = secMsg.IssueSize;
-							security.IssueDate = secMsg.IssueDate;
-							security.UnderlyingSecurityType = secMsg.UnderlyingSecurityType;
+							isNew = false;
+							security.ApplyChanges(secMsg, _exchangeInfoProvider, UpdateDuplicateSecurities);
 						}
 						else
 							security = secMsg.ToSecurity(_exchangeInfoProvider);
 
-						_entityRegistry.Securities.Save(security);
+						_securityStorage.Save(security, UpdateDuplicateSecurities);
 
-						if (ExtendedInfoStorageItem != null)
-						{
-							ExtendedInfoStorageItem.Add(secMsg.SecurityId, secMsg.ExtensionInfo);
-						}
+						ExtendedInfoStorageItem?.Add(secMsg.SecurityId, secMsg.ExtensionInfo);
+
+						SecurityUpdated?.Invoke(security, isNew);
 					}
 
 					var percent = (int)(((double)lineIndex / len) * 100 - 1).Round();
@@ -141,34 +138,34 @@
 			}
 
 			if (buffer.Count > 0)
-				FlushBuffer(buffer);
+				Flush();
+
+			return (count, lastTime);
 		}
 
-		private Security InitSecurity(SecurityId securityId, IExchangeInfoProvider exchangeInfoProvider)
+		private SecurityId TryInitSecurity(SecurityId securityId)
 		{
-			var id = securityId.ToStringId();
-			var security = _entityRegistry.Securities.ReadById(id);
+			var security = _securityStorage.LookupById(securityId);
 
 			if (security != null)
-				return security;
+				return securityId;
 
 			security = new Security
 			{
-				Id = id,
+				Id = securityId.ToStringId(),
 				Code = securityId.SecurityCode,
-				Board = exchangeInfoProvider.GetOrCreateBoard(securityId.BoardCode),
-				Type = securityId.SecurityType,
+				Board = _exchangeInfoProvider.GetOrCreateBoard(securityId.BoardCode),
 			};
 
-			_entityRegistry.Securities.Save(security);
-			this.AddInfoLog(LocalizedStrings.Str2871Params.Put(id));
+			_securityStorage.Save(security, false);
+			this.AddInfoLog(LocalizedStrings.Str2871Params.Put(securityId));
 
-			return security;
+			return securityId;
 		}
 
-		private void FlushBuffer(List<dynamic> buffer)
+		private void FlushBuffer(List<Message> buffer)
 		{
-			var registry = ConfigManager.GetService<IStorageRegistry>();
+			var registry = ServicesRegistry.StorageRegistry;
 
 			if (DataType.MessageType == typeof(NewsMessage))
 			{
@@ -178,63 +175,56 @@
 			{
 				foreach (var typeGroup in buffer.GroupBy(i => i.GetType()))
 				{
-					var dataType = (Type)typeGroup.Key;
+					var dataType = typeGroup.Key;
 
-					foreach (var secGroup in typeGroup.GroupBy(i => (SecurityId)i.SecurityId))
+					foreach (var secGroup in typeGroup.GroupBy(g => ((ISecurityIdMessage)g).SecurityId))
 					{
-						var secId = secGroup.Key;
-						var security = InitSecurity(secGroup.Key, _exchangeInfoProvider);
+						var secId = TryInitSecurity(secGroup.Key);
 
 						if (dataType.IsCandleMessage())
 						{
-							var timeFrame = (TimeSpan)DataType.Arg;
+							var timeFrame = DataType.Arg as TimeSpan?;
 							var candles = secGroup.Cast<CandleMessage>().ToArray();
 
 							foreach (var candle in candles)
 							{
 								if (candle.CloseTime < candle.OpenTime)
 								{
-									// если в файле время закрытия отсутствует
-									if (candle.CloseTime.Date == candle.CloseTime)
-										candle.CloseTime = default(DateTimeOffset);
+									// close time doesn't exist in importing file
+									candle.CloseTime = default;
 								}
 								else if (candle.CloseTime > candle.OpenTime)
 								{
-									// если в файле время открытия отсутствует
-									if (candle.OpenTime.Date == candle.OpenTime)
+									// date component can be missed for open time
+									if (candle.OpenTime.Date.IsDefault())
 									{
 										candle.OpenTime = candle.CloseTime;
 
-										//var tfCandle = candle as TimeFrameCandle;
+										if (timeFrame != null)
+											candle.OpenTime -= timeFrame.Value;
+									}
+									else if (candle.OpenTime.TimeOfDay.IsDefault())
+									{
+										candle.OpenTime = candle.CloseTime;
 
-										//if (tfCandle != null)
-										candle.CloseTime += timeFrame;
+										if (timeFrame != null)
+											candle.OpenTime -= timeFrame.Value;
 									}
 								}
 							}
 
 							registry
-								.GetCandleMessageStorage(dataType, security, DataType.Arg, _drive, _storageFormat)
+								.GetCandleMessageStorage(dataType, secId, DataType.Arg, _drive, _storageFormat)
 								.Save(candles.OrderBy(c => c.OpenTime));
 						}
 						else if (dataType == typeof(TimeQuoteChange))
 						{
-							registry
-								.GetQuoteMessageStorage(security, _drive, _storageFormat)
-								.Save(secGroup
-									.GroupBy(i => i.Time)
-									.Select(g => new QuoteChangeMessage
-									{
-										SecurityId = secId,
-										ServerTime = g.Key,
-										Bids = g.Cast<QuoteChange>().Where(q => q.Side == Sides.Buy).ToArray(),
-										Asks = g.Cast<QuoteChange>().Where(q => q.Side == Sides.Sell).ToArray(),
-									})
-									.OrderBy(md => md.ServerTime));
+							var storage = registry.GetQuoteMessageStorage(secId, _drive, _storageFormat);
+							storage.Save(secGroup.Cast<QuoteChangeMessage>().OrderBy(md => md.ServerTime));
 						}
 						else
 						{
-							var storage = registry.GetStorage(security, dataType, DataType.Arg, _drive, _storageFormat);
+							var storage = registry.GetStorage(secId, dataType, DataType.Arg, _drive, _storageFormat);
 
 							if (dataType == typeof(ExecutionMessage))
 								((IMarketDataStorage<ExecutionMessage>)storage).Save(secGroup.Cast<ExecutionMessage>().OrderBy(m => m.ServerTime));

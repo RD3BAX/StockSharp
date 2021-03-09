@@ -8,21 +8,66 @@
 	    	 Предоставляется бесплатно и пожизненно всем желающим  Для этого необходимо только <externalLink>
 			<linkText>пройти регистрацию!</linkText>
 			<linkAlternateText>Регистрация в Stocksharp</linkAlternateText>
-			<linkUri>http://stocksharp.ru/register/</linkUri>
+			<linkUri>https://stocksharp.ru/register/</linkUri>
 			<linkTarget>_blank</linkTarget>
 			</externalLink>
-			 Эта лицензия включает <token>designer</token>, <token>hydra</token>, <token>stocksharpapi</token> 
-			 (<token>quik</token>, <token>alfa</token>, <token>smartcom</token>, <token>transaq</token>, <token>alor</token>,
-			 <token>openecry</token>, <token>IB</token>, <token>etrade</token>, <token>lmax</token>, <token>oanda</token>, 
-			 <token>blackwood</token>, <token>iqfeed</token>, <token>sterling</token>, <token>rithmic</token>, <token>cqg</token>, 
-			 <token>matlab</token>, <token>btce</token>, <token>bitstamp</token>, BarChart и RSS).
-		</para>
+			 Эта лицензия включает: </para>
+			 		<list class="ordered">
+  			<listItem><token>designer</token></listItem>
+  			<listItem><token>hydra</token></listItem>
+  			<listItem><token>terminal</token></listItem>
+  			<listItem><token>stocksharpapi</token></listItem>
+		</list>
+
 		<para>Cм. также <link xlink:href="b9f672db-e0c9-4208-9759-179e5de17fd8">Установка StockSharp</link>.</para>
+		<para><legacyBold>Крипто-трейдер</legacyBold></para>
+<para><token>Binance</token>,
+<token>Bitalong</token>,
+<token>Bitbank</token>,
+<token>Bitexbook</token>,
+<token>Bitfinex</token>,
+<token>Bithumb</token>,
+<token>BitStamp</token>,
+<token>Bitmex</token>,
+<token>Bittrex</token>,
+<token>Btce</token>,
+<token>Cex</token>,
+<token>Coinbase</token>,
+<token>Coincheck</token>,
+<token>CoinExchange</token>,
+<token>CoinCap</token>,
+<token>Coinigy</token>,
+<token>Cryptopia</token>,
+<token>Deribit</token>,
+<token>Exmo</token>,
+<token>Digifinex</token>,
+<token>DigitexFutures</token>,
+<token>Gdax</token>,
+<token>HitBtc</token>,
+<token>Huobi</token>,
+<token>Idax</token>,
+<token>Kraken</token>,
+<token>Kucoin</token>,
+<token>Liqui</token>,
+<token>LiveCoin</token>,
+<token>Okcoin</token>,
+<token>Okex</token>,
+<token>Poloniex</token>,
+<token>PrizmBit</token>,
+<token>Quoinex</token>,
+<token>TradeOgre</token>,
+<token>Yobit</token>,
+<token>Zaif</token>,
+<token>LBank</token>,
+<token>BitMax</token>,
+<token>BW</token>,
+<token>Bibox</token>,
+<token>CoinBene</token>,
+<token>BitZ</token>,
+<token>ZB</token></para>
+  		
 		<para><legacyBold>Расширенная лицензия</legacyBold></para>
 		<list class="ordered">
-  			<listItem>
-  				<para><token>plaza</token> коннектор (режим ClientGate COM).</para>
-  			</listItem>
   			<listItem>
   				<para>Готовые торговые стратегии (хеджирование опционов, маркет-мэйкинг, котирование, скользящие стоп и тейк защиты и т.д.).</para>
   			</listItem>
@@ -65,7 +110,7 @@
   					<para><link xlink:href="62dc0f78-2b9a-4f88-b6bc-68361bd0d8fe">ITCH</link> - прямое подключение к торгам на биржах LSE и/или NASDAQ по протоколу ITCH.</para>
   				</listItem>
   				<listItem>
-  					<para><link xlink:href="b0198d6a-0667-45d4-b172-698afd3ca310">FIX/FAST</link> - прямое подключение к торгам по протоколу FIX/FAST (список поддерживаемых площадок на странице <token>stocksharppricing</token>).</para>
+  					<para><link xlink:href="29dfad18-ac49-4cf4-993c-c32d62101fff">FIX/FAST</link> - прямое подключение к торгам по протоколу FIX/FAST (список поддерживаемых площадок на странице <token>stocksharppricing</token>).</para>
   				</listItem>
   				<listItem>
   					<para><link xlink:href="1ee210ee-a004-4277-b8f4-91cb08d651db">TWIME</link> - коннектор для управления заявками на срочном рынке Московской Биржи.</para>
@@ -85,21 +130,6 @@
   		</para>
 
 	</introduction>
-	
-	 <relatedTopics>
-     		<!--<externalLink>
-			<linkText>Новые подходы к лицензированию</linkText>
-			<linkAlternateText>Лицензирование</linkAlternateText>
-			<linkUri>http://stocksharp.ru/news/264/novye-podhody-k-litsenzirovaniyu/</linkUri>
-			<linkTarget>_blank</linkTarget>
-		</externalLink>
-		<externalLink>
-			<linkText>Стоимость лицензий StockSharp</linkText>
-			<linkAlternateText>Стоимость лицензий</linkAlternateText>
-			<linkUri>http://stocksharp.ru/products/pricing/</linkUri>
-			<linkTarget>_blank</linkTarget>
-		</externalLink>-->
-     	</relatedTopics>
 	</developerWalkthroughDocument>
 </topic>
 

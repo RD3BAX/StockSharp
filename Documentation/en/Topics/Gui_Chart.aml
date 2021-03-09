@@ -43,16 +43,14 @@ The example from Samples/Chart/SampleChart is taken as a basis, in which some ch
 		  <step>
 			  <content>
 <para>
-2.	In the main window code we declare the variables for 
-<codeEntityReference>T:StockSharp.Algo.Candles.CandleManager</codeEntityReference>, 
-the chart areas, the chart elements and indicators.				  
+2.	In the main window code we declare the variables for the chart areas, the chart elements and indicators.				  
 </para>
 				    <code title="C#" language="C#">
               		<![CDATA[
               		
 private readonly Dictionary<CandleSeries, ChartWindow> _chartWindows = new Dictionary<CandleSeries, ChartWindow>();
+private readonly Connector _connector = new Connector();
 
-private CandleManager _candleManager;
 private readonly LogManager _logManager;
 
 private ChartArea _candlesArea;
@@ -77,32 +75,21 @@ private MovingAverageConvergenceDivergence _macd;
 3.	In the <legacyBold>Click</legacyBold> event handler of the <legacyBold>Connect</legacyBold> 
 button, along with subscribing to connector events and calling the 
 <codeEntityReference>M:StockSharp.BusinessEntities.IConnector.Connect</codeEntityReference> 
-method, we initialize a candle manager and subscribe to the 
-<codeEntityReference qualifyHint="true">E:StockSharp.Algo.Candles.CandleManager.Processing</codeEntityReference>  
+method, we subscribe to the 
+<codeEntityReference qualifyHint="true">E:StockSharp.Algo.Connector.CandleSeriesProcessing</codeEntityReference> 
 event. of this event, The chart plotting will be performed in the handler of this event when a new candle is received.
 				  </para>
 				    <code title="C#" language="C#">
               		<![CDATA[
+              		
 private void ConnectClick(object sender, RoutedEventArgs e)
 {
-        ..........................................         
-        _logManager.Sources.Add(_trader);
-        _trader.Restored += () => this.GuiAsync(() => MessageBox.Show(this, LocalizedStrings.Str2958));
+		..........................................		 
 
-        _trader.ConnectionError += error => this.GuiAsync(() => MessageBox.Show(this, error.ToString()));
+		_connector.CandleSeriesProcessing += DrawCandle;
+{
+		..........................................		 
 
-        _trader.MarketDataSubscriptionFailed += (security, type, error) =>
-            this.GuiAsync(() => MessageBox.Show(this, error.ToString(), LocalizedStrings.Str2956Params.Put(type, security)));
-
-        Security.SecurityProvider = new FilterableSecurityProvider(_trader);
-
-        _trader.Connect();
-
-        _candleManager = new CandleManager(_trader);
-        _candleManager.Processing += DrawCandle;
-
-        ConnectBtn.IsEnabled = false;
-    }
 }
 	  				]]>
 				   </code>
@@ -119,51 +106,57 @@ Opening the chart window and start the candle manager.
               		<![CDATA[
 private void ShowChartClick(object sender, RoutedEventArgs e)
 {
-    var security = SelectedSecurity;
+	var security = SelectedSecurity;
 
-    var series = new CandleSeries(CandlesSettings.Settings.CandleType, security, CandlesSettings.Settings.Arg);
+	var series = new CandleSeries(CandlesSettings.Settings.CandleType, security, CandlesSettings.Settings.Arg);
 
-    _chartWindows.SafeAdd(series, key =>
-    {
-        var wnd = new ChartWindow
-        {
-            Title = "{0} {1} {2}".Put(security.Code, series.CandleType.Name, series.Arg)
-        };
+	_chartWindows.SafeAdd(series, key =>
+	{
+		var wnd = new ChartWindow
+		{
+			Title = "{0} {1} {2}".Put(security.Code, series.CandleType.Name, series.Arg)
+		};
 
-        wnd.MakeHideable();
+		wnd.MakeHideable();
+
 
         _sma = new SimpleMovingAverage() { Length = 11 };
         _macd = new MovingAverageConvergenceDivergence();
+
 
         _smaChartElement = new ChartIndicatorElement();
         _macdChartElement = new ChartIndicatorElement();
         _candlesElem = new ChartCandleElement();
 
+
         _macdChartElement.DrawStyle = ChartIndicatorDrawStyles.Histogram;
+
 
         _candlesArea = new ChartArea();
         _indicatorsArea = new ChartArea();
 
+
         wnd.Chart.Areas.Add(_candlesArea);
         wnd.Chart.Areas.Add(_indicatorsArea);
+
 
         _candlesArea.Elements.Add(_candlesElem);
         _candlesArea.Elements.Add(_smaChartElement);
         _indicatorsArea.Elements.Add(_macdChartElement);
 
         return wnd;
-    }).Show();
-
-    _candleManager.Start(series);
+	}).Show();
+	_connector.SubscribeCandles(series, DateTime.Today.Subtract(TimeSpan.FromDays(30)), DateTime.Now);
 }
-]]></code>
+	  				]]>
+				   </code>
 			  </content>
 		  </step>
 		  		  <step>
 			  <content>
 <para>
 5.	In the 
-<codeEntityReference qualifyHint="true">E:StockSharp.Algo.Candles.CandleManager.Processing</codeEntityReference> 
+<codeEntityReference qualifyHint="true">E:StockSharp.Algo.Connector.CandleSeriesProcessing</codeEntityReference> 
 event handler we draw the candle and the values of the indicators for each completed candle. For this, we:
 				</para>
 				<list class="ordered">
@@ -184,31 +177,32 @@ method, to which we pass the time and the dictionary of elements.</para>
 The result of the program is shown in the figure above.
 </para>
 				  
-<code title="C#" language="C#"><![CDATA[
+<code title="C#" language="C#">
+              		<![CDATA[
 private void DrawCandle(CandleSeries series, Candle candle)
 {
-    var wnd = _chartWindows.TryGetValue(series);
+	var wnd = _chartWindows.TryGetValue(series);
 
-    if (wnd != null)
-    {
-        if (candle.State != CandleStates.Finished)
-            return;
+	if (wnd != null)
+	{
+		if (candle.State != CandleStates.Finished)
+			return;
 
-        var smaValue = _sma.Process(candle);
-        var macdValue = _macd.Process(candle);
+		var smaValue = _sma.Process(candle);
+		var macdValue = _macd.Process(candle);
 
-        var data = new ChartDrawData();
-        data
-          .Group(candle.OpenTime)
-            .Add(_candlesElem, candle)
-            .Add(_smaChartElement, smaValue)
-            .Add(_macdChartElement, macdValue);
+		var data = new ChartDrawData();
+		data
+		  .Group(candle.OpenTime)
+		    .Add(_candlesElem, candle)
+		    .Add(_smaChartElement, smaValue)
+		    .Add(_macdChartElement, macdValue);
 
-            wnd.Chart.Draw(data);
-
-    }
-}
-]]></code>
+        	wnd.Chart.Draw(data);
+               
+	}
+}]]>
+				   </code>
 			  </content>
 		  </step>
 		  

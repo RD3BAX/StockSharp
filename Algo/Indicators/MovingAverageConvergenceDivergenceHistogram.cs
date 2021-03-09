@@ -43,18 +43,15 @@ namespace StockSharp.Algo.Indicators
 		{
 		}
 
-		/// <summary>
-		/// To handle the input value.
-		/// </summary>
-		/// <param name="input">The input value.</param>
-		/// <returns>The resulting value.</returns>
+		/// <inheritdoc />
 		protected override IIndicatorValue OnProcess(IIndicatorValue input)
 		{
 			var macdValue = Macd.Process(input);
-			var signalValue = Macd.IsFormed ? SignalMa.Process(macdValue) : new DecimalIndicatorValue(this, 0);
+			var signalValue = Macd.IsFormed ? SignalMa.Process(macdValue) : new DecimalIndicatorValue(SignalMa, 0);
 
 			var value = new ComplexIndicatorValue(this);
-			value.InnerValues.Add(Macd, input.SetValue(this, macdValue.GetValue<decimal>() - signalValue.GetValue<decimal>()));
+			//value.InnerValues.Add(Macd, input.SetValue(this, macdValue.GetValue<decimal>() - signalValue.GetValue<decimal>()));
+			value.InnerValues.Add(Macd, macdValue);
 			value.InnerValues.Add(SignalMa, signalValue);
 			return value;
 		}

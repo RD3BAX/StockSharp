@@ -32,15 +32,14 @@ namespace StockSharp.Algo.Storages.Csv
 	{
 		private readonly Encoding _encoding;
 		private readonly Func<FastCsvReader, object> _readId;
+		private readonly Func<FastCsvReader, bool> _readIncrementalOnly;
 
-		public CsvMetaInfo(DateTime date, Encoding encoding, Func<FastCsvReader, object> readId)
+		public CsvMetaInfo(DateTime date, Encoding encoding, Func<FastCsvReader, object> readId, Func<FastCsvReader, bool> readIncrementalOnly = null)
 			: base(date)
 		{
-			if (encoding == null)
-				throw new ArgumentNullException(nameof(encoding));
-
-			_encoding = encoding;
+			_encoding = encoding ?? throw new ArgumentNullException(nameof(encoding));
 			_readId = readId;
+			_readIncrementalOnly = readIncrementalOnly;
 		}
 
 		//public override CsvMetaInfo Clone()
@@ -62,6 +61,8 @@ namespace StockSharp.Algo.Storages.Csv
 			get => _lastId;
 			set => _lastId = value;
 		}
+
+		public bool? IncrementalOnly { get; set; }
 
 		public override void Write(Stream stream)
 		{
@@ -102,6 +103,7 @@ namespace StockSharp.Algo.Storages.Csv
 
 					LastTime = reader.ReadTime(Date).UtcDateTime;
 					_lastId = _readId?.Invoke(reader);
+					IncrementalOnly = _readIncrementalOnly?.Invoke(reader);
 				}
 
 				stream.Position = 0;
@@ -124,7 +126,7 @@ namespace StockSharp.Algo.Storages.Csv
 		/// </summary>
 		/// <param name="encoding">Encoding.</param>
 		protected CsvMarketDataSerializer(Encoding encoding = null)
-			: this(default(SecurityId), encoding)
+			: this(default, encoding)
 		{
 		}
 
@@ -221,18 +223,9 @@ namespace StockSharp.Algo.Storages.Csv
 
 			public CsvEnumerator(CsvMarketDataSerializer<TData> serializer, FastCsvReader reader, IMarketDataMetaInfo metaInfo)
 			{
-				if (serializer == null)
-					throw new ArgumentNullException(nameof(serializer));
-
-				if (reader == null)
-					throw new ArgumentNullException(nameof(reader));
-
-				if (metaInfo == null)
-					throw new ArgumentNullException(nameof(metaInfo));
-
-				_serializer = serializer;
-				_reader = reader;
-				_metaInfo = metaInfo;
+				_serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
+				_reader = reader ?? throw new ArgumentNullException(nameof(reader));
+				_metaInfo = metaInfo ?? throw new ArgumentNullException(nameof(metaInfo));
 			}
 
 			public override bool MoveNext()

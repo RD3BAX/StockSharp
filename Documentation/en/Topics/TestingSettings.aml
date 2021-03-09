@@ -24,25 +24,19 @@
 				all modes except the order log. The default is off.</para>
   			</listItem>
   			
-  			<!--<listItem>
-				<para><codeEntityReference qualifyHint="true">P:StockSharp.Algo.Testing.HistoryEmulationConnector.UseExternalCandleSource</codeEntityReference> -
-				to send the candles to	<codeEntityReference qualifyHint="false">T:StockSharp.Algo.Candles.ICandleManager</codeEntityReference> directly. It can speed
-				up the candles creation, but there will be no intermediate candle changes. The default is off.</para>
-  			</listItem>-->  			
-  			
   		</list>
 
 		<para>Even if the strategy is tested on the candles, it is necessary to subscribe to the tick trades:</para>
 		<code language="C#">
 		<![CDATA[
-trader.RegisterTrades(security);
+		_connector.SubscribeTrades(security);
 		]]>
 		</code>
 		
 		<para>If the strategy needs the order books, it is necessary to subscribe to the order books:</para>
 		<code language="C#">
 		<![CDATA[
-trader.RegisterMarketDepth(security);
+		_connector.SubscribeMarketDepth(security);
 		]]>
 		</code>
 		
@@ -50,7 +44,12 @@ trader.RegisterMarketDepth(security);
 		<code language="C#">
 		<![CDATA[
 var mdGenerator = new TrendMarketDepthGenerator(connector.GetSecurityId(security));
-trader.RegisterMarketDepth(mdGenerator);
+_connector.MarketDataAdapter.SendInMessage(new GeneratorMessage
+{
+    IsSubscribe = true,
+    Generator = mdGenerator
+});
+
 		]]>
 		</code>
 		

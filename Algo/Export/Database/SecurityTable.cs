@@ -51,6 +51,16 @@ namespace StockSharp.Algo.Export.Database
 				DbType = typeof(decimal?),
 				ValueRestriction = new DecimalRestriction { Scale = 1 }
 			};
+			yield return new ColumnDescription(nameof(SecurityMessage.MinVolume))
+			{
+				DbType = typeof(decimal?),
+				ValueRestriction = new DecimalRestriction { Scale = 1 }
+			};
+			yield return new ColumnDescription(nameof(SecurityMessage.MaxVolume))
+			{
+				DbType = typeof(decimal?),
+				ValueRestriction = new DecimalRestriction { Scale = 1 }
+			};
 			yield return new ColumnDescription(nameof(SecurityMessage.Multiplier))
 			{
 				DbType = typeof(decimal?),
@@ -90,6 +100,11 @@ namespace StockSharp.Algo.Export.Database
 				DbType = typeof(string),
 				ValueRestriction = new StringRestriction(32)
 			};
+			yield return new ColumnDescription(nameof(SecurityMessage.UnderlyingSecurityMinVolume))
+			{
+				DbType = typeof(decimal?),
+				ValueRestriction = new DecimalRestriction { Scale = 1 }
+			};
 			yield return new ColumnDescription(nameof(SecurityMessage.ExpiryDate))
 			{
 				DbType = typeof(DateTimeOffset?),
@@ -126,6 +141,25 @@ namespace StockSharp.Algo.Export.Database
 			{
 				DbType = typeof(string),
 				ValueRestriction = new StringRestriction(6)
+			};
+			yield return new ColumnDescription(nameof(SecurityMessage.Shortable))
+			{
+				DbType = typeof(bool?),
+			};
+			yield return new ColumnDescription(nameof(SecurityMessage.BasketCode))
+			{
+				DbType = typeof(string),
+				ValueRestriction = new StringRestriction(2)
+			};
+			yield return new ColumnDescription(nameof(SecurityMessage.BasketExpression))
+			{
+				DbType = typeof(string),
+				ValueRestriction = new StringRestriction(int.MaxValue)
+			};
+			yield return new ColumnDescription(nameof(SecurityMessage.FaceValue))
+			{
+				DbType = typeof(decimal?),
+				ValueRestriction = new DecimalRestriction()
 			};
 			yield return new ColumnDescription(nameof(SecurityId.Bloomberg))
 			{
@@ -166,6 +200,16 @@ namespace StockSharp.Algo.Export.Database
 				DbType = typeof(string),
 				ValueRestriction = new StringRestriction(16)
 			};
+			yield return new ColumnDescription(nameof(SecurityMessage.PrimaryId) + nameof(SecurityId.SecurityCode))
+			{
+				DbType = typeof(string),
+				ValueRestriction = new StringRestriction(64)
+			};
+			yield return new ColumnDescription(nameof(SecurityMessage.PrimaryId) + nameof(SecurityId.BoardCode))
+			{
+				DbType = typeof(string),
+				ValueRestriction = new StringRestriction(32)
+			};
 		}
 
 		protected override IDictionary<string, object> ConvertToParameters(SecurityMessage value)
@@ -176,6 +220,8 @@ namespace StockSharp.Algo.Export.Database
 				{ nameof(SecurityId.BoardCode), value.SecurityId.BoardCode },
 				{ nameof(SecurityMessage.PriceStep), value.PriceStep },
 				{ nameof(SecurityMessage.VolumeStep), value.VolumeStep },
+				{ nameof(SecurityMessage.MinVolume), value.MinVolume },
+				{ nameof(SecurityMessage.MaxVolume), value.MaxVolume },
 				{ nameof(SecurityMessage.Multiplier), value.Multiplier },
 				{ nameof(SecurityMessage.Decimals), value.Decimals },
 				{ nameof(SecurityMessage.SecurityType), value.SecurityType.ToString() },
@@ -184,6 +230,7 @@ namespace StockSharp.Algo.Export.Database
 				{ nameof(SecurityMessage.Strike), value.Strike },
 				{ nameof(SecurityMessage.UnderlyingSecurityCode), value.UnderlyingSecurityCode },
 				{ nameof(SecurityMessage.UnderlyingSecurityType), value.UnderlyingSecurityType.ToString() },
+				{ nameof(SecurityMessage.UnderlyingSecurityMinVolume), value.UnderlyingSecurityMinVolume },
 				{ nameof(SecurityMessage.ExpiryDate), value.ExpiryDate },
 				{ nameof(SecurityMessage.Currency), value.Currency.ToString() },
 				{ nameof(SecurityMessage.Name), value.Name },
@@ -192,6 +239,10 @@ namespace StockSharp.Algo.Export.Database
 				{ nameof(SecurityMessage.IssueSize), value.IssueSize },
 				{ nameof(SecurityMessage.IssueDate), value.IssueDate },
 				{ nameof(SecurityMessage.CfiCode), value.CfiCode },
+				{ nameof(SecurityMessage.Shortable), value.Shortable },
+				{ nameof(SecurityMessage.BasketCode), value.BasketCode },
+				{ nameof(SecurityMessage.BasketExpression), value.BasketExpression },
+				{ nameof(SecurityMessage.FaceValue), value.FaceValue },
 				{ nameof(SecurityId.Bloomberg), value.SecurityId.Bloomberg },
 				{ nameof(SecurityId.Cusip), value.SecurityId.Cusip },
 				{ nameof(SecurityId.IQFeed), value.SecurityId.IQFeed },
@@ -200,6 +251,8 @@ namespace StockSharp.Algo.Export.Database
 				{ nameof(SecurityId.Plaza), value.SecurityId.Plaza },
 				{ nameof(SecurityId.Ric), value.SecurityId.Ric },
 				{ nameof(SecurityId.Sedol), value.SecurityId.Sedol },
+				{ nameof(SecurityMessage.PrimaryId) + nameof(SecurityId.SecurityCode), value.PrimaryId.SecurityCode },
+				{ nameof(SecurityMessage.PrimaryId) + nameof(SecurityId.BoardCode), value.PrimaryId.BoardCode },
 			};
 			return result;
 		}

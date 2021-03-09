@@ -10,16 +10,34 @@ namespace StockSharp.Algo.Storages.Csv
 	using Ecng.Common;
 	using Ecng.Serialization;
 
+	using StockSharp.Messages;
+
+	/// <summary>
+	/// The interface for presentation in the form of list of trade objects, received from the external storage.
+	/// </summary>
+	public interface ICsvEntityList
+	{
+		/// <summary>
+		/// The time delayed action.
+		/// </summary>
+		DelayAction DelayAction { get; set; }
+
+		/// <summary>
+		/// Initialize the storage.
+		/// </summary>
+		/// <param name="errors">Possible errors.</param>
+		void Init(IList<Exception> errors);
+	}
+
 	/// <summary>
 	/// List of trade objects, received from the CSV storage.
 	/// </summary>
-	/// <typeparam name="T">Entity type.</typeparam>
-	public abstract class CsvEntityList<T> : SynchronizedList<T>, IStorageEntityList<T>
-		where T : class
+	/// <typeparam name="TKey">Key type.</typeparam>
+	/// <typeparam name="TEntity">Entity type.</typeparam>
+	public abstract class CsvEntityList<TKey, TEntity> : SynchronizedList<TEntity>, IStorageEntityList<TEntity>, ICsvEntityList
+		where TEntity : class
 	{
-		private readonly string _fileName;
-
-		private readonly Dictionary<object, T> _items = new Dictionary<object, T>();
+		private readonly Dictionary<TKey, TEntity> _items = new Dictionary<TKey, TEntity>();
 
 		/// <summary>
 		/// The CSV storage of trading objects.
@@ -27,31 +45,31 @@ namespace StockSharp.Algo.Storages.Csv
 		protected CsvEntityRegistry Registry { get; }
 
 		/// <summary>
-		/// Initializes a new instance of the <see cref="CsvEntityList{T}"/>.
+		/// Initializes a new instance of the <see cref="CsvEntityList{TKey,TEntity}"/>.
 		/// </summary>
 		/// <param name="registry">The CSV storage of trading objects.</param>
 		/// <param name="fileName">CSV file name.</param>
 		protected CsvEntityList(CsvEntityRegistry registry, string fileName)
 		{
-			if (registry == null)
-				throw new ArgumentNullException(nameof(registry));
-
 			if (fileName == null)
 				throw new ArgumentNullException(nameof(fileName));
 
-			Registry = registry;
+			Registry = registry ?? throw new ArgumentNullException(nameof(registry));
 
-			_fileName = Path.Combine(Registry.Path, fileName);
+			FileName = Path.Combine(Registry.Path, fileName);
 		}
+
+		/// <summary>
+		/// CSV file name.
+		/// </summary>
+		public string FileName { get; }
 
 		#region IStorageEntityList<T>
 
 		private DelayAction.IGroup<CsvFileWriter> _delayActionGroup;
 		private DelayAction _delayAction;
 
-		/// <summary>
-		/// The time delayed action.
-		/// </summary>
+		/// <inheritdoc cref="ICsvEntityList" />
 		public DelayAction DelayAction
 		{
 			get => _delayAction;
@@ -72,7 +90,7 @@ namespace StockSharp.Algo.Storages.Csv
 				{
 					_delayActionGroup = _delayAction.CreateGroup(() =>
 					{
-						var stream = new TransactionFileStream(_fileName, FileMode.OpenOrCreate);
+						var stream = new TransactionFileStream(FileName, FileMode.OpenOrCreate);
 						stream.Seek(0, SeekOrigin.End);
 						return new CsvFileWriter(stream, Registry.Encoding);
 					});
@@ -80,36 +98,55 @@ namespace StockSharp.Algo.Storages.Csv
 			}
 		}
 
-		T IStorageEntityList<T>.ReadById(object id)
+		/// <inheritdoc />
+		void IStorageEntityList<TEntity>.WaitFlush()
+		{
+			_delayActionGroup?.WaitFlush(false);
+		}
+
+		TEntity IStorageEntityList<TEntity>.ReadById(object id)
 		{
 			lock (SyncRoot)
 				return _items.TryGetValue(NormalizedKey(id));
 		}
 
-		IEnumerable<T> IStorageEntityList<T>.ReadLasts(int count)
-		{
-			lock (SyncRoot)
-				return _items.Values.Skip(Count - count).Take(count).ToArray();
-		}
-
-		private object GetNormalizedKey(T entity)
+		private TKey GetNormalizedKey(TEntity entity)
 		{
 			return NormalizedKey(GetKey(entity));
 		}
 
-		private static object NormalizedKey(object key)
+		private static readonly bool _isSecId = typeof(TKey) == typeof(SecurityId);
+
+		private static TKey NormalizedKey(object key)
 		{
 			if (key is string str)
-				return str.ToLowerInvariant();
+			{
+				str = str.ToLowerInvariant();
 
-			return key;
+				if (_isSecId)
+				{
+					// backward compatibility when SecurityList accept as a key string
+					key = str.ToSecurityId();
+				}
+				else
+					key = str;
+			}
+
+			return (TKey)key;
+		}
+
+		/// <inheritdoc />
+		public void Save(TEntity entity)
+		{
+			Save(entity, false);
 		}
 
 		/// <summary>
 		/// Save object into storage.
 		/// </summary>
 		/// <param name="entity">Trade object.</param>
-		public virtual void Save(T entity)
+		/// <param name="forced">Forced update.</param>
+		public virtual void Save(TEntity entity, bool forced)
 		{
 			lock (SyncRoot)
 			{
@@ -120,7 +157,7 @@ namespace StockSharp.Algo.Storages.Csv
 					Add(entity);
 					return;
 				}
-				else if (IsChanged(entity))
+				else if (IsChanged(entity, forced))
 					UpdateCache(entity);
 				else
 					return;
@@ -135,8 +172,9 @@ namespace StockSharp.Algo.Storages.Csv
 		/// Is <paramref name="entity"/> changed.
 		/// </summary>
 		/// <param name="entity">Trade object.</param>
+		/// <param name="forced">Forced update.</param>
 		/// <returns>Is changed.</returns>
-		protected virtual bool IsChanged(T entity)
+		protected virtual bool IsChanged(TEntity entity, bool forced)
 		{
 			return true;
 		}
@@ -146,57 +184,58 @@ namespace StockSharp.Algo.Storages.Csv
 		/// </summary>
 		/// <param name="item">Trade object.</param>
 		/// <returns>The key.</returns>
-		protected abstract object GetKey(T item);
+		protected abstract TKey GetKey(TEntity item);
 
 		/// <summary>
 		/// Write data into CSV.
 		/// </summary>
 		/// <param name="writer">CSV writer.</param>
 		/// <param name="data">Trade object.</param>
-		protected abstract void Write(CsvFileWriter writer, T data);
+		protected abstract void Write(CsvFileWriter writer, TEntity data);
 
 		/// <summary>
 		/// Read data from CSV.
 		/// </summary>
 		/// <param name="reader">CSV reader.</param>
 		/// <returns>Trade object.</returns>
-		protected abstract T Read(FastCsvReader reader);
+		protected abstract TEntity Read(FastCsvReader reader);
 
 		/// <summary>
-		/// 
+		///
 		/// </summary>
 		/// <param name="item"></param>
 		/// <returns></returns>
-		public override bool Contains(T item)
+		public override bool Contains(TEntity item)
 		{
 			lock (SyncRoot)
 				return _items.ContainsKey(GetNormalizedKey(item));
 		}
 
 		/// <summary>
-		/// 
+		///
 		/// </summary>
 		/// <param name="item">Trade object.</param>
-		protected override void OnAdded(T item)
+		/// <returns></returns>
+		protected override bool OnAdding(TEntity item)
 		{
-			base.OnAdded(item);
-
 			lock (SyncRoot)
 			{
-				if (!_items.TryAdd(GetNormalizedKey(item), item))
-					return;
+				if (!_items.TryAdd2(GetNormalizedKey(item), item))
+					return false;
 
 				AddCache(item);
 
-				_delayActionGroup.Add((writer, i) => Write(writer, i), item);
+				_delayActionGroup.Add(Write, item);
 			}
+
+			return base.OnAdding(item);
 		}
 
 		/// <summary>
-		/// 
+		///
 		/// </summary>
 		/// <param name="item">Trade object.</param>
-		protected override void OnRemoved(T item)
+		protected override void OnRemoved(TEntity item)
 		{
 			base.OnRemoved(item);
 
@@ -210,7 +249,25 @@ namespace StockSharp.Algo.Storages.Csv
 		}
 
 		/// <summary>
-		/// 
+		///
+		/// </summary>
+		/// <param name="items"></param>
+		protected void OnRemovedRange(IEnumerable<TEntity> items)
+		{
+			lock (SyncRoot)
+			{
+				foreach (var item in items)
+				{
+					_items.Remove(GetNormalizedKey(item));
+					RemoveCache(item);
+				}
+
+				WriteMany(_items.Values.ToArray());
+			}
+		}
+
+		/// <summary>
+		///
 		/// </summary>
 		protected override void OnCleared()
 		{
@@ -225,7 +282,11 @@ namespace StockSharp.Algo.Storages.Csv
 			}
 		}
 
-		private void WriteMany(T[] values)
+		/// <summary>
+		/// Write data into storage.
+		/// </summary>
+		/// <param name="values">Trading objects.</param>
+		private void WriteMany(TEntity[] values)
 		{
 			_delayActionGroup.Add((writer, state) =>
 			{
@@ -248,20 +309,21 @@ namespace StockSharp.Algo.Storages.Csv
 			});
 		}
 
-		internal void ReadItems(List<Exception> errors)
+		void ICsvEntityList.Init(IList<Exception> errors)
 		{
 			if (errors == null)
 				throw new ArgumentNullException(nameof(errors));
 
-			if (!File.Exists(_fileName))
+			if (!File.Exists(FileName))
 				return;
 
 			CultureInfo.InvariantCulture.DoInCulture(() =>
 			{
-				using (var stream = new FileStream(_fileName, FileMode.OpenOrCreate))
+				using (var stream = new FileStream(FileName, FileMode.OpenOrCreate, FileAccess.ReadWrite))
 				{
 					var reader = new FastCsvReader(stream, Registry.Encoding);
 
+					var hasDuplicates = false;
 					var currErrors = 0;
 
 					while (reader.NextLine())
@@ -273,22 +335,48 @@ namespace StockSharp.Algo.Storages.Csv
 
 							lock (SyncRoot)
 							{
-								InnerCollection.Add(item);
-								AddCache(item);
-								_items.Add(key, item);
+								if (_items.TryAdd2(key, item))
+								{
+									InnerCollection.Add(item);
+									AddCache(item);
+								}
+								else
+									hasDuplicates = true;
 							}
 
 							currErrors = 0;
 						}
 						catch (Exception ex)
 						{
-							errors.Add(ex);
+							if (errors.Count < 100)
+								errors.Add(ex);
 
 							currErrors++;
-							
-							if (currErrors >= 10 || errors.Count >= 100)
+
+							if (currErrors >= 1000)
 								break;
 						}
+					}
+
+					if (!hasDuplicates)
+						return;
+
+					try
+					{
+						lock (SyncRoot)
+						{
+							stream.SetLength(0);
+
+							using (var writer = new CsvFileWriter(stream, Registry.Encoding))
+							{
+								foreach (var item in InnerCollection)
+									Write(writer, item);
+							}
+						}
+					}
+					catch (Exception ex)
+					{
+						errors.Add(ex);
 					}
 				}
 			});
@@ -307,7 +395,7 @@ namespace StockSharp.Algo.Storages.Csv
 		/// Add item to cache.
 		/// </summary>
 		/// <param name="item">New item.</param>
-		protected virtual void AddCache(T item)
+		protected virtual void AddCache(TEntity item)
 		{
 		}
 
@@ -315,7 +403,7 @@ namespace StockSharp.Algo.Storages.Csv
 		/// Update item in cache.
 		/// </summary>
 		/// <param name="item">Item.</param>
-		protected virtual void UpdateCache(T item)
+		protected virtual void UpdateCache(TEntity item)
 		{
 		}
 
@@ -323,8 +411,14 @@ namespace StockSharp.Algo.Storages.Csv
 		/// Remove item from cache.
 		/// </summary>
 		/// <param name="item">Item.</param>
-		protected virtual void RemoveCache(T item)
+		protected virtual void RemoveCache(TEntity item)
 		{
+		}
+
+		/// <inheritdoc />
+		public override string ToString()
+		{
+			return FileName;
 		}
 	}
 }

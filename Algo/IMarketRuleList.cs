@@ -63,11 +63,9 @@ namespace StockSharp.Algo
 		/// </summary>
 		/// <param name="container">The rules container.</param>
 		public MarketRuleList(IMarketRuleContainer container)
+			: base(true)
 		{
-			if (container == null)
-				throw new ArgumentNullException(nameof(container));
-
-			_container = container;
+			_container = container ?? throw new ArgumentNullException(nameof(container));
 		}
 
 		/// <summary>
@@ -91,7 +89,7 @@ namespace StockSharp.Algo
 		protected override bool OnRemoving(IMarketRule item)
 		{
 			if (!Contains(item))
-				throw new InvalidOperationException(LocalizedStrings.Str906Params.Put(item.Name, _container.Name));
+				throw new InvalidOperationException(LocalizedStrings.Str906Params.Put(item, _container.Name));
 
 			return base.OnRemoving(item);
 		}
